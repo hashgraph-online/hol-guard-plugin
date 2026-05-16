@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">HOL Guard Plugin icon</title>
+  <desc id="desc">Blue shield with connected graph nodes.</desc>
+  <rect width="128" height="128" rx="28" fill="#F5F7FC"/>
+  <path d="M64 14 104 29v31c0 25-15 45-40 55-25-10-40-30-40-55V29l40-15Z" fill="#5599FE"/>
+  <path d="M64 26 92 36v24c0 18-10 32-28 41-18-9-28-23-28-41V36l28-10Z" fill="#FFFFFF" opacity=".94"/>
+  <circle cx="64" cy="43" r="7" fill="#3F4174"/>
+  <circle cx="48" cy="62" r="7" fill="#5599FE"/>
+  <circle cx="80" cy="62" r="7" fill="#5599FE"/>
+  <circle cx="64" cy="82" r="7" fill="#48DF7B"/>
+  <path d="M60 48 52 57m16-9 8 9M53 66l7 11m15-11-7 11" stroke="#3F4174" stroke-width="4" stroke-linecap="round"/>
+</svg>
