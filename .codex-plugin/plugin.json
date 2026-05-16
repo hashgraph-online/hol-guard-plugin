@@ -23,7 +23,7 @@
     "type": "cli",
     "displayName": "HOL Guard Plugin",
     "shortDescription": "Protect Codex, Claude Code, and other AI harnesses.",
-    "longDescription": "HOL Guard Plugin teaches Codex how to install and operate HOL Guard across Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity. It also guides ai-plugin-scanner checks for Codex plugins, Claude Code project surfaces, skills, MCP servers, and marketplace packages.",
+    "longDescription": "HOL Guard Plugin teaches Codex how to install and operate HOL Guard across Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity. It also guides plugin-scanner checks for Codex plugins, Claude Code project surfaces, skills, MCP servers, and marketplace packages.",
     "developerName": "Hashgraph Online",
     "category": "Security",
     "capabilities": [
@@ -41,7 +41,7 @@
       "Show Guard receipts and pending approvals."
     ],
     "brandColor": "#5599FE",
-    "composerIcon": "./assets/icon.svg",
+    "composerIcon": "./assets/icon.png",
     "logo": "./assets/logo.svg",
     "screenshots": [
       "./assets/screenshot.svg"
