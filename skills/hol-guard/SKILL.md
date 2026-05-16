@@ -6,7 +6,7 @@ license: Apache-2.0
 
 # HOL Guard
 
-HOL Guard protects local AI harnesses before tools run. Use this skill when the user wants AI antivirus behavior, local approval review, plugin scanning, MCP safety checks, skill/package verification, or release gates from `ai-plugin-scanner`.
+HOL Guard protects local AI harnesses before tools run. Use this skill when the user wants AI antivirus behavior, local approval review, Codex protection, Claude Code protection, MCP safety checks, skill/package verification, or release gates from `ai-plugin-scanner`.
 
 ## Hard Rules
 
@@ -70,11 +70,57 @@ Harness names:
 - `opencode`
 - `antigravity`
 
+Harness aliases:
+
+- `claude` maps to `claude-code`
+- `gemini-cli` maps to `gemini`
+- `open-code` maps to `opencode`
+- `open-claw` maps to `openclaw`
+- `copilot-cli` maps to `copilot`
+
 Use harness-specific bootstrap when available:
 
 ```bash
 hol-guard hermes bootstrap
 ```
+
+### Claude Code
+
+Use this when the workspace has `.claude/settings.local.json`, `.claude/agents`, Claude hooks, `.mcp.json`, or Claude-managed tool approval surfaces.
+
+```bash
+hol-guard install claude-code
+hol-guard run claude-code --dry-run
+hol-guard run claude-code
+hol-guard doctor claude-code --json
+```
+
+Claude Code is a first-class Guard target. Prefer Guard-owned Claude hooks over direct manual edits to Claude config.
+
+### Codex
+
+Use this when the workspace has Codex config, `.codex/hooks.json`, Codex MCP servers, or Codex App/CLI tool flows.
+
+```bash
+hol-guard install codex
+hol-guard run codex --dry-run
+hol-guard run codex
+hol-guard doctor codex --json
+```
+
+Codex supports Guard-owned `PreToolUse` Bash hooks and same-chat MCP elicitation where available.
+
+### Other Harnesses
+
+Use the same Guard flow for:
+
+- Copilot CLI: `hol-guard install copilot`
+- Cursor: `hol-guard install cursor`
+- Gemini CLI: `hol-guard install gemini`
+- Hermes: `hol-guard hermes bootstrap`
+- OpenClaw: `hol-guard install openclaw`
+- OpenCode: `hol-guard install opencode`
+- Antigravity: `hol-guard install antigravity`
 
 ## Approval Work
 
@@ -119,7 +165,7 @@ hol-guard sync
 
 ## Scan A Plugin Or Skill Package
 
-Use scanner mode for Codex plugins, `.agents` marketplaces, skills, MCP server configs, and release gates.
+Use scanner mode for Codex plugins, Claude Code project surfaces, `.agents` marketplaces, skills, MCP server configs, and release gates.
 
 ```bash
 plugin-scanner lint .
@@ -134,6 +180,15 @@ plugin-scanner verify <path>
 ```
 
 If the target is a Codex marketplace root with `.agents/plugins/marketplace.json`, scan the repo root so local plugin entries can be discovered.
+
+Scanner target guidance:
+
+- Codex plugin: scan the repo root or plugin folder containing `.codex-plugin/plugin.json`.
+- Codex marketplace: scan the repo root containing `.agents/plugins/marketplace.json`.
+- Claude Code project: scan the workspace root containing `.claude/`, `.mcp.json`, hooks, or agent folders.
+- MCP server package: scan the package root containing server config and package metadata.
+- Skill package: scan the folder containing `SKILL.md`.
+- Mixed agent workspace: scan the repo root so local plugin, skill, MCP, and harness config surfaces are discovered together.
 
 ## Common Debug Commands
 
@@ -164,7 +219,11 @@ This plugin includes:
 
 ```bash
 bash scripts/hol-guard-plugin status
+bash scripts/hol-guard-plugin harnesses
+bash scripts/hol-guard-plugin protect claude-code
 bash scripts/hol-guard-plugin protect <harness>
+bash scripts/hol-guard-plugin scan-system claude <path>
+bash scripts/hol-guard-plugin scan-system codex <path>
 bash scripts/hol-guard-plugin scan <path>
 bash scripts/hol-guard-plugin evidence
 ```

@@ -1,7 +1,7 @@
 {
   "name": "hol-guard-plugin",
   "version": "0.1.0",
-  "description": "Codex plugin for HOL Guard local AI harness protection and ai-plugin-scanner verification workflows.",
+  "description": "Codex plugin for HOL Guard local AI harness protection across Codex, Claude Code, and other agent/plugin systems.",
   "author": {
     "name": "Hashgraph Online",
     "email": "dev@hol.org",
@@ -22,8 +22,8 @@
   "interface": {
     "type": "cli",
     "displayName": "HOL Guard Plugin",
-    "shortDescription": "Protect AI harnesses and scan plugins before release.",
-    "longDescription": "HOL Guard Plugin teaches Codex how to install and operate HOL Guard, protect local AI harnesses, review approvals, collect receipts, and run ai-plugin-scanner checks for plugins, skills, MCP servers, and marketplace packages.",
+    "shortDescription": "Protect Codex, Claude Code, and other AI harnesses.",
+    "longDescription": "HOL Guard Plugin teaches Codex how to install and operate HOL Guard across Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity. It also guides ai-plugin-scanner checks for Codex plugins, Claude Code project surfaces, skills, MCP servers, and marketplace packages.",
     "developerName": "Hashgraph Online",
     "category": "Security",
     "capabilities": [
@@ -36,7 +36,7 @@
     "privacyPolicyURL": "https://hol.org/privacy",
     "termsOfServiceURL": "https://hol.org/terms",
     "defaultPrompt": [
-      "Protect this workspace with HOL Guard.",
+      "Protect Claude Code with HOL Guard.",
       "Scan this Codex plugin before release.",
       "Show Guard receipts and pending approvals."
     ],
