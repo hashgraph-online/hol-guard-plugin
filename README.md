@@ -1,2 +1,73 @@
-# hol-guard-plugin
-Codex plugin for HOL Guard AI security and ai-plugin-scanner workflows
+# HOL Guard Plugin
+
+Codex plugin for HOL Guard, the local AI security layer from [`ai-plugin-scanner`](https://github.com/hashgraph-online/ai-plugin-scanner).
+
+HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity surfaces, then route risky changes through local approvals and receipts.
+
+## What this plugin adds
+
+- A public Codex skill at [`skills/hol-guard/SKILL.md`](skills/hol-guard/SKILL.md).
+- Guard setup guidance for local harness protection.
+- Scanner guidance for Codex plugins, skills, MCP servers, and marketplace packages.
+- Helper script for common `hol-guard` and `plugin-scanner` workflows.
+- Validation test for the plugin manifest, skill, assets, and script paths.
+
+## Install HOL Guard locally
+
+Recommended:
+
+```bash
+pipx install hol-guard
+```
+
+Fallback:
+
+```bash
+python3 -m pip install --user hol-guard
+```
+
+Verify:
+
+```bash
+hol-guard status
+hol-guard detect --json
+```
+
+## Use from Codex
+
+Install this plugin in Codex, then ask:
+
+```text
+Use HOL Guard to protect this workspace before running agent tools.
+```
+
+or:
+
+```text
+Use HOL Guard to scan this plugin before release.
+```
+
+## Local helper
+
+```bash
+bash scripts/hol-guard-plugin status
+bash scripts/hol-guard-plugin protect codex
+bash scripts/hol-guard-plugin scan .
+bash scripts/hol-guard-plugin evidence
+```
+
+The helper does not read `.env` files. It only calls `hol-guard` and `plugin-scanner` commands already exposed by the upstream package.
+
+## Validation
+
+```bash
+npm test
+```
+
+No runtime dependencies are required for the validation test.
+
+## Source projects
+
+- Plugin repository: https://github.com/hashgraph-online/hol-guard-plugin
+- Guard and scanner source: https://github.com/hashgraph-online/ai-plugin-scanner
+- HOL Guard product: https://hol.org/guard
