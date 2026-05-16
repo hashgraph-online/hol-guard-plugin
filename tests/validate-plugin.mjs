@@ -37,9 +37,19 @@ const skill = await readFile(path.join(root, 'skills/hol-guard/SKILL.md'), 'utf8
 assert(skill.includes('Never read `.env` files.'), 'skill must include env safety rule');
 assert(skill.includes('plugin-scanner verify'), 'skill must document plugin-scanner verify');
 assert(skill.includes('hol-guard bootstrap'), 'skill must document hol-guard bootstrap');
+assert(skill.includes('hol-guard install claude-code'), 'skill must document Claude Code protection');
+assert(skill.includes('Claude Code is a first-class Guard target.'), 'skill must call out Claude as first-class');
+assert(skill.includes('OpenClaw'), 'skill must document OpenClaw support');
+assert(skill.includes('OpenCode'), 'skill must document OpenCode support');
 
 const readme = await readFile(path.join(root, 'README.md'), 'utf8');
 assert(readme.includes('https://github.com/hashgraph-online/ai-plugin-scanner'), 'README must link source scanner repo');
 assert(readme.includes('npm test'), 'README must document validation');
+assert(readme.includes('bash scripts/hol-guard-plugin protect claude-code'), 'README must show Claude helper command');
+
+const helper = await readFile(path.join(root, 'scripts/hol-guard-plugin'), 'utf8');
+assert(helper.includes('normalize_harness'), 'helper must normalize harness aliases');
+assert(helper.includes('claude|claude_code|claude-code'), 'helper must accept Claude aliases');
+assert(helper.includes('scan-system'), 'helper must support system-specific scan guidance');
 
 console.log('HOL Guard Plugin validation passed.');

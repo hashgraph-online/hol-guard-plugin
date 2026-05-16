@@ -8,19 +8,67 @@ HOL Guard Plugin helper
 Usage:
   hol-guard-plugin status
   hol-guard-plugin install
+  hol-guard-plugin harnesses
   hol-guard-plugin protect <harness>
   hol-guard-plugin scan [path]
+  hol-guard-plugin scan-system <system> [path]
   hol-guard-plugin evidence
   hol-guard-plugin approvals
 
 Commands:
   status      Show local Guard posture and detected harnesses.
   install     Print the recommended HOL Guard install command.
+  harnesses   List supported harness systems and aliases.
   protect     Bootstrap, install, dry-run, activate, and show status for a harness.
   scan        Run plugin-scanner lint and verify for a path.
+  scan-system Explain and scan Codex, Claude, MCP, skills, or marketplace surfaces.
   evidence    Show receipts, inventory, and events.
   approvals   Show pending approvals and approval-center hint.
 EOF
+}
+
+supported_harnesses() {
+  cat <<'EOF'
+Supported HOL Guard harness systems
+
+Harness       Aliases                    Guard command
+codex         codex                      hol-guard install codex
+claude-code   claude, claude_code        hol-guard install claude-code
+copilot       copilot, copilot-cli       hol-guard install copilot
+cursor        cursor                     hol-guard install cursor
+gemini        gemini, gemini-cli         hol-guard install gemini
+hermes        hermes                     hol-guard hermes bootstrap
+openclaw      openclaw, open-claw        hol-guard install openclaw
+opencode      opencode, open-code        hol-guard install opencode
+antigravity   antigravity                hol-guard install antigravity
+
+Scanner systems
+codex         .codex-plugin/plugin.json, .agents/plugins/marketplace.json, skills/
+claude        .claude/settings.local.json, .claude/agents, hooks, MCP config
+mcp           MCP server config and tool surfaces
+skills        SKILL.md packages and skill folders
+marketplace   Codex or agent plugin marketplace roots
+EOF
+}
+
+normalize_harness() {
+  local harness="$1"
+  case "$harness" in
+    codex) echo "codex" ;;
+    claude|claude_code|claude-code) echo "claude-code" ;;
+    copilot|copilot-cli|copilot_cli) echo "copilot" ;;
+    cursor) echo "cursor" ;;
+    gemini|gemini-cli|gemini_cli) echo "gemini" ;;
+    hermes) echo "hermes" ;;
+    openclaw|open-claw|open_claw) echo "openclaw" ;;
+    opencode|open-code|open_code) echo "opencode" ;;
+    antigravity|anti-gravity|anti_gravity) echo "antigravity" ;;
+    *)
+      echo "Unsupported harness: $harness" >&2
+      supported_harnesses >&2
+      exit 2
+      ;;
+  esac
 }
 
 need_command() {
@@ -52,13 +100,19 @@ EOF
 }
 
 protect() {
-  local harness="${1:-}"
-  if [[ -z "$harness" ]]; then
-    echo "Missing harness. Example: hol-guard-plugin protect codex" >&2
+  local requested_harness="${1:-}"
+  if [[ -z "$requested_harness" ]]; then
+    echo "Missing harness. Example: hol-guard-plugin protect claude-code" >&2
     exit 2
   fi
+  local harness
+  harness="$(normalize_harness "$requested_harness")"
   need_command hol-guard
-  hol-guard bootstrap
+  if [[ "$harness" == "hermes" ]]; then
+    hol-guard hermes bootstrap
+  else
+    hol-guard bootstrap
+  fi
   hol-guard install "$harness"
   hol-guard run "$harness" --dry-run
   hol-guard run "$harness"
@@ -70,6 +124,27 @@ scan() {
   need_command plugin-scanner
   plugin-scanner lint "$target"
   plugin-scanner verify "$target"
+}
+
+scan_system() {
+  local system="${1:-}"
+  local target="${2:-.}"
+  if [[ -z "$system" ]]; then
+    echo "Missing system. Example: hol-guard-plugin scan-system claude ." >&2
+    exit 2
+  fi
+
+  case "$system" in
+    codex|claude|mcp|skills|marketplace|plugin|plugins)
+      echo "Scanning $system surface at $target"
+      scan "$target"
+      ;;
+    *)
+      echo "Unsupported scan system: $system" >&2
+      supported_harnesses >&2
+      exit 2
+      ;;
+  esac
 }
 
 evidence() {
@@ -94,8 +169,10 @@ main() {
   case "$command_name" in
     status) status "$@" ;;
     install) install_hint ;;
+    harnesses) supported_harnesses ;;
     protect) protect "$@" ;;
     scan) scan "$@" ;;
+    scan-system) scan_system "$@" ;;
     evidence) evidence "$@" ;;
     approvals) approvals "$@" ;;
     -h|--help|help|"") usage ;;

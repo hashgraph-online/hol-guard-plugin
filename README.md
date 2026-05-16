@@ -7,8 +7,8 @@ HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Cl
 ## What this plugin adds
 
 - A public Codex skill at [`skills/hol-guard/SKILL.md`](skills/hol-guard/SKILL.md).
-- Guard setup guidance for local harness protection.
-- Scanner guidance for Codex plugins, skills, MCP servers, and marketplace packages.
+- Guard setup guidance for Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity.
+- Scanner guidance for Codex plugins, Claude Code project surfaces, skills, MCP servers, and marketplace packages.
 - Helper script for common `hol-guard` and `plugin-scanner` workflows.
 - Validation test for the plugin manifest, skill, assets, and script paths.
 
@@ -51,12 +51,30 @@ Use HOL Guard to scan this plugin before release.
 
 ```bash
 bash scripts/hol-guard-plugin status
+bash scripts/hol-guard-plugin harnesses
+bash scripts/hol-guard-plugin protect claude-code
 bash scripts/hol-guard-plugin protect codex
+bash scripts/hol-guard-plugin scan-system claude .
+bash scripts/hol-guard-plugin scan-system codex .
 bash scripts/hol-guard-plugin scan .
 bash scripts/hol-guard-plugin evidence
 ```
 
 The helper does not read `.env` files. It only calls `hol-guard` and `plugin-scanner` commands already exposed by the upstream package.
+
+## Supported harness systems
+
+| System | Helper command | Guard command |
+| :--- | :--- | :--- |
+| Codex | `bash scripts/hol-guard-plugin protect codex` | `hol-guard install codex` |
+| Claude Code | `bash scripts/hol-guard-plugin protect claude-code` | `hol-guard install claude-code` |
+| Copilot CLI | `bash scripts/hol-guard-plugin protect copilot` | `hol-guard install copilot` |
+| Cursor | `bash scripts/hol-guard-plugin protect cursor` | `hol-guard install cursor` |
+| Gemini CLI | `bash scripts/hol-guard-plugin protect gemini` | `hol-guard install gemini` |
+| Hermes | `bash scripts/hol-guard-plugin protect hermes` | `hol-guard hermes bootstrap` |
+| OpenClaw | `bash scripts/hol-guard-plugin protect openclaw` | `hol-guard install openclaw` |
+| OpenCode | `bash scripts/hol-guard-plugin protect opencode` | `hol-guard install opencode` |
+| Antigravity | `bash scripts/hol-guard-plugin protect antigravity` | `hol-guard install antigravity` |
 
 ## Validation
 
