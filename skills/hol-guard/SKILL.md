@@ -1,12 +1,12 @@
 ---
 name: hol-guard
-description: Use when setting up HOL Guard, protecting local AI harnesses, reviewing Guard approvals or receipts, scanning Codex plugins, skills, MCP servers, marketplace packages, or running ai-plugin-scanner verification before release.
+description: Use when setting up HOL Guard, protecting local AI harnesses, reviewing Guard approvals or receipts, scanning Codex plugins, skills, MCP servers, marketplace packages, or running plugin-scanner verification before release.
 license: Apache-2.0
 ---
 
 # HOL Guard
 
-HOL Guard protects local AI harnesses before tools run. Use this skill when the user wants AI antivirus behavior, local approval review, Codex protection, Claude Code protection, MCP safety checks, skill/package verification, or release gates from `ai-plugin-scanner`.
+HOL Guard protects local AI harnesses before tools run. Use this skill when the user wants AI antivirus behavior, local approval review, Codex protection, Claude Code protection, MCP safety checks, skill/package verification, or release gates from `hol-guard` and `plugin-scanner`.
 
 ## Hard Rules
 

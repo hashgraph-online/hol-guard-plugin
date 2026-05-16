@@ -29,7 +29,7 @@ for (const prompt of manifest.interface.defaultPrompt) {
 }
 
 await exists('skills/hol-guard/SKILL.md');
-await exists('assets/icon.svg');
+await exists('assets/icon.png');
 await exists('assets/logo.svg');
 await exists('scripts/hol-guard-plugin');
 
@@ -43,7 +43,7 @@ assert(skill.includes('OpenClaw'), 'skill must document OpenClaw support');
 assert(skill.includes('OpenCode'), 'skill must document OpenCode support');
 
 const readme = await readFile(path.join(root, 'README.md'), 'utf8');
-assert(readme.includes('https://github.com/hashgraph-online/ai-plugin-scanner'), 'README must link source scanner repo');
+assert(readme.includes('https://github.com/hashgraph-online/hol-guard'), 'README must link source Guard repo');
 assert(readme.includes('npm test'), 'README must document validation');
 assert(readme.includes('bash scripts/hol-guard-plugin protect claude-code'), 'README must show Claude helper command');
 

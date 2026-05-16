@@ -1,6 +1,6 @@
 # HOL Guard Plugin
 
-Codex plugin for HOL Guard, the local AI security layer from [`ai-plugin-scanner`](https://github.com/hashgraph-online/ai-plugin-scanner).
+Codex plugin for HOL Guard, the local AI security layer from [`hol-guard`](https://github.com/hashgraph-online/hol-guard).
 
 HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity surfaces, then route risky changes through local approvals and receipts.
 
@@ -87,5 +87,5 @@ No runtime dependencies are required for the validation test.
 ## Source projects
 
 - Plugin repository: https://github.com/hashgraph-online/hol-guard-plugin
-- Guard and scanner source: https://github.com/hashgraph-online/ai-plugin-scanner
+- Guard and scanner source: https://github.com/hashgraph-online/hol-guard
 - HOL Guard product: https://hol.org/guard
