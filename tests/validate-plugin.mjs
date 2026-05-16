@@ -50,6 +50,8 @@ assert(readme.includes('bash scripts/hol-guard-plugin protect claude-code'), 'RE
 const helper = await readFile(path.join(root, 'scripts/hol-guard-plugin'), 'utf8');
 assert(helper.includes('normalize_harness'), 'helper must normalize harness aliases');
 assert(helper.includes('claude|claude_code|claude-code'), 'helper must accept Claude aliases');
+assert(helper.includes('normalize_scan_system'), 'helper must normalize scanner system aliases');
+assert(helper.includes('claude|claude-code|claude_code'), 'helper must accept Claude scanner aliases');
 assert(helper.includes('scan-system'), 'helper must support system-specific scan guidance');
 
 console.log('HOL Guard Plugin validation passed.');

@@ -110,13 +110,28 @@ protect() {
   need_command hol-guard
   if [[ "$harness" == "hermes" ]]; then
     hol-guard hermes bootstrap
-  else
-    hol-guard bootstrap
+    hol-guard status
+    return
   fi
+
+  hol-guard bootstrap
   hol-guard install "$harness"
   hol-guard run "$harness" --dry-run
   hol-guard run "$harness"
   hol-guard status
+}
+
+normalize_scan_system() {
+  local system="$1"
+  case "$system" in
+    claude|claude-code|claude_code) echo "claude" ;;
+    codex|mcp|skills|marketplace|plugin|plugins) echo "$system" ;;
+    *)
+      echo "Unsupported scan system: $system" >&2
+      supported_harnesses >&2
+      exit 2
+      ;;
+  esac
 }
 
 scan() {
@@ -127,20 +142,22 @@ scan() {
 }
 
 scan_system() {
-  local system="${1:-}"
+  local requested_system="${1:-}"
   local target="${2:-.}"
-  if [[ -z "$system" ]]; then
-    echo "Missing system. Example: hol-guard-plugin scan-system claude ." >&2
+  if [[ -z "$requested_system" ]]; then
+    echo "Missing system. Example: hol-guard-plugin scan-system claude-code ." >&2
     exit 2
   fi
 
+  local system
+  system="$(normalize_scan_system "$requested_system")"
   case "$system" in
     codex|claude|mcp|skills|marketplace|plugin|plugins)
       echo "Scanning $system surface at $target"
       scan "$target"
       ;;
     *)
-      echo "Unsupported scan system: $system" >&2
+      echo "Unsupported scan system: $requested_system" >&2
       supported_harnesses >&2
       exit 2
       ;;
