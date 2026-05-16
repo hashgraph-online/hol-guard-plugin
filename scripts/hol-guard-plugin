@@ -16,7 +16,7 @@ Usage:
 Commands:
   status      Show local Guard posture and detected harnesses.
   install     Print the recommended HOL Guard install command.
-  protect     Bootstrap, install, dry-run, and show status for a harness.
+  protect     Bootstrap, install, dry-run, activate, and show status for a harness.
   scan        Run plugin-scanner lint and verify for a path.
   evidence    Show receipts, inventory, and events.
   approvals   Show pending approvals and approval-center hint.
@@ -61,6 +61,7 @@ protect() {
   hol-guard bootstrap
   hol-guard install "$harness"
   hol-guard run "$harness" --dry-run
+  hol-guard run "$harness"
   hol-guard status
 }
 
