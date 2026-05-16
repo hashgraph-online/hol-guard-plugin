@@ -19,5 +19,5 @@ npm test
 
 - Manifest validates with `npm test`.
 - README command examples still match the skill.
-- Source links still point to `hashgraph-online/ai-plugin-scanner`.
+- Source links still point to `hashgraph-online/hol-guard`.
 - No secrets or local machine paths are committed.
