@@ -34,7 +34,7 @@ jobs:
 
       - name: Scan plugin package
         run: |
-          codex-plugin-scanner . \
+          codex-plugin-scanner scan . \
             --format json \
             --cisco-skill-scan auto \
             --min-score 95 \
