@@ -29,10 +29,13 @@ jobs:
       - name: Validate manifest and assets
         run: npm test
 
+      - name: Install Codex Plugin Scanner
+        run: python3 -m pip install --user "codex-plugin-scanner[cisco]==2.0.12"
+
       - name: Scan plugin package
-        uses: hashgraph-online/codex-plugin-scanner/action@9533a3340c1e5ea3a3f802d584ec94d9f8580de1
-        with:
-          plugin_dir: .
-          cisco_skill_scan: auto
-          min_score: "95"
-          fail_on_severity: medium
+        run: |
+          codex-plugin-scanner . \
+            --format json \
+            --cisco-skill-scan auto \
+            --min-score 95 \
+            --fail-on-severity medium
