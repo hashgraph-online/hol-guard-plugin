@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Validate manifest and assets
+        run: npm test
+
+      - name: Install Codex Plugin Scanner
+        run: python3 -m pip install --user codex-plugin-scanner==2.0.12
+
+      - name: Scan plugin package
+        run: |
+          python3 -m codex_plugin_scanner scan . \
+            --profile public-marketplace \
+            --cisco-skill-scan auto \
+            --min-score 95 \
+            --fail-on-severity medium
