@@ -57,7 +57,7 @@ assert(helper.includes('claude|claude_code|claude-code'), 'helper must accept Cl
 assert(helper.includes('normalize_scan_system'), 'helper must normalize scanner system aliases');
 assert(helper.includes('claude|claude-code|claude_code'), 'helper must accept Claude scanner aliases');
 assert(helper.includes('scan-system'), 'helper must support system-specific scan guidance');
-// Validate .mcp.json
+// Validate .mcp.json — load forbidden patterns from data file to avoid scanner false positives
 await exists('.mcp.json');
 const mcpConfig = JSON.parse(await readFile(path.join(root, '.mcp.json'), 'utf8'));
 assert(mcpConfig.mcpServers, '.mcp.json must have mcpServers');
@@ -68,22 +68,9 @@ assert(
   Array.isArray(guardServer.args) && guardServer.args.length === 4 && guardServer.args[0] === 'guard' && guardServer.args[1] === 'mcp' && guardServer.args[2] === 'serve' && guardServer.args[3] === '--stdio',
   '.mcp.json args must be ["guard", "mcp", "serve", "--stdio"]',
 );
-// Reject forbidden patterns
 const mcpJsonStr = JSON.stringify(mcpConfig);
-assert(!mcpJsonStr.includes('npx'), '.mcp.json must not use npx');
-assert(!mcpJsonStr.includes('npm exec'), '.mcp.json must not use npm exec');
-assert(!mcpJsonStr.includes('pnpm dlx'), '.mcp.json must not use pnpm dlx');
-assert(!mcpJsonStr.includes('yarn dlx'), '.mcp.json must not use yarn dlx');
-assert(!mcpJsonStr.includes('bunx'), '.mcp.json must not use bunx');
-assert(!mcpJsonStr.includes('bash -c'), '.mcp.json must not use shell wrappers');
-assert(!mcpJsonStr.includes('sh -c'), '.mcp.json must not use shell wrappers');
-assert(!mcpJsonStr.includes('http://'), '.mcp.json must not contain URLs');
-assert(!mcpJsonStr.includes('https://'), '.mcp.json must not contain URLs');
-assert(!mcpJsonStr.includes('token'), '.mcp.json must not contain inline credentials');
-assert(!mcpJsonStr.includes('secret'), '.mcp.json must not contain inline credentials');
-assert(!mcpJsonStr.includes('password'), '.mcp.json must not contain inline credentials');
-assert(!mcpJsonStr.includes('api_key'), '.mcp.json must not contain inline credentials');
-assert(!mcpJsonStr.includes('/Users/'), '.mcp.json must not contain absolute paths');
-assert(!mcpJsonStr.includes('/home/'), '.mcp.json must not contain absolute paths');
-
+const forbiddenPatterns = JSON.parse(await readFile(path.join(root, 'tests/forbidden-patterns.json'), 'utf8'));
+for (const pattern of forbiddenPatterns) {
+  assert(!mcpJsonStr.includes(pattern), `.mcp.json must not contain forbidden pattern: ${pattern}`);
+}
 console.log('HOL Guard Plugin validation passed.');
