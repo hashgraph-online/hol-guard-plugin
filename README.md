@@ -19,7 +19,7 @@ This plugin includes a `.mcp.json` that registers the HOL Guard local MCP server
 
 ### Prerequisites
 
-- `hol-guard` CLI installed and on PATH (minimum version: 2.1.0)
+- `hol-guard` CLI installed and on PATH (minimum version: 2.0.1024)
 - Python >= 3.10
 
 ### Tools
