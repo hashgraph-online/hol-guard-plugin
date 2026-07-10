@@ -1,9 +1,10 @@
 # HOL Guard Plugin
 
+![HOL Guard](https://hol.org/api/registry/badges/guard/hashgraph-online/hol-guard-plugin)
+
 Codex plugin for HOL Guard, the local AI security layer from [`hol-guard`](https://github.com/hashgraph-online/hol-guard).
 
 HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity surfaces, then route risky changes through local approvals and receipts.
-
 ## What this plugin adds
 
 - A public Codex skill at [`skills/hol-guard/SKILL.md`](skills/hol-guard/SKILL.md).
