@@ -1,0 +1,17 @@
+[
+  "npx",
+  "npm exec",
+  "pnpm dlx",
+  "yarn dlx",
+  "bunx",
+  "bash -c",
+  "sh -c",
+  "http://",
+  "https://",
+  "token",
+  "secret",
+  "password",
+  "api_key",
+  "/Users/",
+  "/home/"
+]

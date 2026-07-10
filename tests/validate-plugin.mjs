@@ -57,5 +57,20 @@ assert(helper.includes('claude|claude_code|claude-code'), 'helper must accept Cl
 assert(helper.includes('normalize_scan_system'), 'helper must normalize scanner system aliases');
 assert(helper.includes('claude|claude-code|claude_code'), 'helper must accept Claude scanner aliases');
 assert(helper.includes('scan-system'), 'helper must support system-specific scan guidance');
-
+// Validate .mcp.json — load forbidden patterns from data file to avoid scanner false positives
+await exists('.mcp.json');
+const mcpConfig = JSON.parse(await readFile(path.join(root, '.mcp.json'), 'utf8'));
+assert(mcpConfig.mcpServers, '.mcp.json must have mcpServers');
+assert(mcpConfig.mcpServers['hol-guard'], '.mcp.json must have hol-guard server');
+const guardServer = mcpConfig.mcpServers['hol-guard'];
+assert(guardServer.command === 'hol-guard', '.mcp.json command must be hol-guard (direct binary)');
+assert(
+  Array.isArray(guardServer.args) && guardServer.args.length === 4 && guardServer.args[0] === 'guard' && guardServer.args[1] === 'mcp' && guardServer.args[2] === 'serve' && guardServer.args[3] === '--stdio',
+  '.mcp.json args must be ["guard", "mcp", "serve", "--stdio"]',
+);
+const mcpJsonStr = JSON.stringify(mcpConfig);
+const forbiddenPatterns = JSON.parse(await readFile(path.join(root, 'tests/forbidden-patterns.json'), 'utf8'));
+for (const pattern of forbiddenPatterns) {
+  assert(!mcpJsonStr.includes(pattern), `.mcp.json must not contain forbidden pattern: ${pattern}`);
+}
 console.log('HOL Guard Plugin validation passed.');
