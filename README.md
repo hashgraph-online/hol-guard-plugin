@@ -1,6 +1,6 @@
 # HOL Guard Plugin
 
-![HOL Guard](https://hol.org/api/registry/badges/guard/hashgraph-online/hol-guard-plugin)
+[![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fguard%2Fhashgraph-online%2Fhol-guard-plugin&style=flat-square)](https://hol.org/guard)
 
 Codex plugin for HOL Guard, the local AI security layer from [`hol-guard`](https://github.com/hashgraph-online/hol-guard).
 
