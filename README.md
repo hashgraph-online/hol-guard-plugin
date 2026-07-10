@@ -11,7 +11,42 @@ HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Cl
 - Guard setup guidance for Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity.
 - Scanner guidance for Codex plugins, Claude Code project surfaces, skills, MCP servers, and marketplace packages.
 - Helper script for common `hol-guard` and `plugin-scanner` workflows.
-- Validation test for the plugin manifest, skill, assets, and script paths.
+- Validation test for the plugin manifest, skill, assets, script paths, and `.mcp.json`.
+
+## MCP server
+
+This plugin includes a `.mcp.json` that registers the HOL Guard local MCP server (`guard-mcp.v1`). The server runs directly via the `hol-guard` binary — no `npx`, package-manager startup, or shell wrappers.
+
+### Prerequisites
+
+- `hol-guard` CLI installed and on PATH (minimum version: 2.1.0)
+- Python >= 3.10
+
+### Tools
+
+The MCP server exposes three read-only tools:
+
+| Tool | Input | Returns |
+| :--- | :--- | :--- |
+| `search` | `{query: string}` | Max 20 sanitized results from local receipts and inventory |
+| `fetch` | `{id: string}` | Single receipt or inventory item, max 32 KiB sanitized text |
+| `get_guard_status` | `{}` | CLI availability, receipt count, inventory count |
+
+All tools return a `guard-mcp.v1` contract envelope with `contractVersion`, `source: local`, `generatedAt`, and `freshness: real-time`.
+
+### Local vs Cloud
+
+- **Local** (`hol-guard mcp serve --stdio`): reads local Guard data offline. No network access required.
+- **Cloud** (`/api/guard/mcp` on the portal): reads synced workspace data. Requires OAuth Bearer token with `guard:workspace.read` and `guard:receipt.read` scopes.
+
+### Setup
+
+```bash
+pipx install hol-guard
+hol-guard status
+```
+
+The `.mcp.json` is automatically discovered by MCP-compatible clients. No additional configuration needed.
 
 ## Install HOL Guard locally
 
