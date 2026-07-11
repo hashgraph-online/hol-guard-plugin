@@ -73,7 +73,7 @@ Test the following flows:
 - [ ] App icon: 512x512 PNG
 - [ ] Short description (under 100 chars)
 - [ ] Long description (under 500 chars)
-- [ ] Privacy policy URL: `https://hol.org/privacy`
+- [ ] Privacy policy URL: `https://hol.org/points/legal/privacy`
 - [ ] Support contact: `dev@hol.org`
 - [ ] Categories: Security
 - [ ] Screenshots (synthetic data only, no real receipts)
