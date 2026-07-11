@@ -7,8 +7,8 @@
 - [x] `.well-known/oauth-protected-resource` → 200 (FIXED via registry-broker PR #159 + k8s ingress patch, no Cloudflare Worker deploy needed)
 - [x] hol-guard v2.0.1037 published to PyPI with MCP server and pagination fix
 - [x] Plugin `.mcp.json` merged in hol-guard-plugin PR #13
-- [x] All 10 PRs merged across 4 repos (hol-guard #1404, #1431, #1433; portal #3942, #3950, #3963; plugin #13, #14, #15; registry-broker #159), 0 unresolved review threads
-- [x] Guard-test: 19/19 steps pass with teardown
+- [x] All 14 PRs merged across 4 repos (hol-guard #1404, #1431, #1433; portal #3942, #3950, #3963, #3964, #3971; plugin #13, #14, #15; registry-broker #159, #160, #161), 0 unresolved review threads
+- [x] Guard-test: 20/20 steps pass with teardown
 - [x] Local MCP: 3 tools (search, fetch, get_guard_status), all read-only
 - [x] `chatgpt-app-submission.json` schema-compliant (3 tools with annotations + justifications, 5 positive + 3 negative test cases)
 - [x] Privacy policy URL: `https://hol.org/points/legal/privacy` → 200
@@ -18,10 +18,12 @@
 - [x] Screenshot: `assets/screenshot.svg` exists
 - [x] No widget/resource registered in v1
 - [x] No checkout, subscription, upsell, approval, policy mutation, sync, delete, or admin tool exists
-- [x] Tool annotations: all readOnlyHint=true, destructiveHint=false, openWorldHint=false
+- [x] Tool annotations: all readOnlyHint=true, destructiveHint=false, openWorldHint=false (PR #3971 fixed live server)
+- [x] WWW-Authenticate 401 header includes resource_metadata + scope (PR #3964)
+- [x] `.well-known/oauth-authorization-server` → 200 (RFC 8414, PR #160 + #161)
 - [x] Sanitization verified: no UUIDs, paths, or secrets in tool output
 - [x] Fetch output ≤ 32 KiB, search results ≤ 20
-- [x] 16/16 production verification checks pass
+- [x] 20/20 production verification checks pass
 - [x] 42/42 local MCP contract + security tests pass
 ## Human Actions Required
 
