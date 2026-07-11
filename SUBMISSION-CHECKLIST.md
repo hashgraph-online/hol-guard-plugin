@@ -10,6 +10,17 @@
 - [x] All 7 PRs merged, 0 unresolved review threads
 - [x] Guard-test: 19/19 steps pass
 - [x] Local MCP: 3 tools (search, fetch, get_guard_status), all read-only
+- [x] `chatgpt-app-submission.json` generated (3 tools, 6 test cases, 12 negative tests)
+- [x] Privacy policy URL: `https://hol.org/points/legal/privacy` → 200
+- [x] Terms URL: `https://hol.org/points/legal/terms` → 200
+- [x] App icon: `assets/icon.png` exists (non-zero size)
+- [x] Logo: `assets/logo.svg` exists
+- [x] Screenshot: `assets/screenshot.svg` exists
+- [x] No widget/resource registered in v1
+- [x] No checkout, subscription, upsell, approval, policy mutation, sync, delete, or admin tool exists
+- [x] Tool annotations: all readOnlyHint=true, destructiveHint=false, openWorldHint=false
+- [x] Sanitization verified: no UUIDs, paths, or secrets in tool output
+- [x] Fetch output ≤ 32 KiB, search results ≤ 20
 
 ## Human Actions Required
 
@@ -21,6 +32,8 @@ npx wrangler deploy
 ```
 
 Verify: `curl https://hol.org/.well-known/oauth-protected-resource` returns JSON with `resource`, `authorization_servers`, `scopes_supported`.
+
+Note: MCP clients can use `https://hol.org/api/guard/oauth` directly in the meantime.
 
 ### Step 2: Create ChatGPT App
 
@@ -49,9 +62,17 @@ Add to `.codex-plugin/plugin.json`:
 "apps": "./.app.json"
 ```
 
-Add a validation test in `tests/forbidden-patterns.json` or a new test file.
+### Step 4: Upload `chatgpt-app-submission.json`
 
-### Step 4: Verify in ChatGPT Developer Mode
+Upload `chatgpt-app-submission.json` to the ChatGPT Apps submission form. The file contains:
+- App info (name, developer, URLs, icon, descriptions)
+- MCP server config (endpoint, OAuth, scopes, PKCE)
+- 3 tool definitions with annotation justifications
+- 6 positive test cases
+- 12 negative test cases (auth, isolation, sanitization)
+- Reviewer instructions (data access, security model, privacy)
+
+### Step 5: Verify in ChatGPT Developer Mode
 
 Test the following flows:
 - [ ] OAuth authorize flow succeeds
@@ -66,24 +87,6 @@ Test the following flows:
 - [ ] Empty results when no data exists
 - [ ] Stale data indicator when data is outdated
 - [ ] Result links open signed-in HOL Guard pages
-
-### Step 5: Complete Submission Checks
-
-- [ ] App name: "HOL Guard"
-- [ ] App icon: 512x512 PNG
-- [ ] Short description (under 100 chars)
-- [ ] Long description (under 500 chars)
-- [ ] Privacy policy URL: `https://hol.org/points/legal/privacy`
-- [ ] Support contact: `dev@hol.org`
-- [ ] Categories: Security
-- [ ] Screenshots (synthetic data only, no real receipts)
-- [ ] Test prompts:
-  - "Show my Guard workspace status"
-  - "Search my Guard receipts for AIBOM"
-  - "Fetch receipt details for the latest scan"
-- [ ] Reviewer instructions: explain that hosted MCP reads cloud-synced Guard data only; local-only data is intentionally unavailable remotely
-- [ ] Verify no widget/resource is registered in v1
-- [ ] Verify no checkout, subscription, upsell, approval, policy mutation, sync, delete, or admin tool exists
 
 ### Step 6: Submit
 
