@@ -1,248 +1,116 @@
 {
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
   "app_info": {
-    "name": "HOL Guard",
-    "developer_name": "Hashgraph Online",
-    "developer_contact": "dev@hol.org",
-    "website_url": "https://hol.org/guard",
-    "privacy_policy_url": "https://hol.org/points/legal/privacy",
-    "terms_of_service_url": "https://hol.org/points/legal/terms",
-    "category": "Security",
-    "short_description": "Search and fetch HOL Guard security receipts and inventory.",
-    "long_description": "HOL Guard provides read-only access to your Guard security receipts, artifact inventory, and workspace status. Search across synced Guard data, fetch individual receipts by opaque ID, and check workspace freshness. All tools are read-only — no mutation, approval, or admin operations.",
-    "brand_color": "#5599FE",
-    "icon_path": "./assets/icon.png",
-    "logo_path": "./assets/logo.svg",
-    "screenshots": [
-      "./assets/screenshot.svg"
-    ]
+    "display_name": "HOL Guard",
+    "subtitle": "Search Guard security receipts",
+    "description": "HOL Guard lets users search and fetch their Guard security receipts, artifact inventory, and workspace status through ChatGPT. All tools are read-only — no mutation, approval, or admin operations are exposed.",
+    "category": "DEVELOPER_TOOLS"
   },
-  "mcp_server": {
-    "type": "streamable-http",
-    "endpoint_url": "https://hol.org/api/guard/mcp",
-    "oauth_authorization_server": "https://hol.org/api/guard/oauth",
-    "required_scopes": [
-      "guard:workspace.read",
-      "guard:receipt.read"
-    ],
-    "optional_scopes": [
-      "offline_access"
-    ],
-    "pkce_method": "S256",
-    "resource_parameter_supported": true,
-    "local_stdio_alternative": {
-      "command": "hol-guard",
-      "args": ["guard", "mcp", "serve", "--stdio"],
-      "works_offline": true,
-      "cli_version": ">=2.0.1024",
-      "pypi_package": "hol-guard"
-    }
-  },
-  "tools": [
-    {
-      "name": "search",
-      "description": "Search Guard receipts and inventory. Returns at most 20 sanitized results. The query matches artifact names, harness names, and policy decisions.",
+  "tools": {
+    "search": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "Free-text search query."
-          }
-        },
-        "required": ["query"]
-      },
-      "output_description": "JSON envelope with contractVersion=guard-mcp.v1, source (local or cloud), generatedAt, freshness, results array, and count. Results contain opaque SHA-256-hashed IDs — no internal UUIDs, file paths, or secrets are exposed.",
-      "tool_hint_justification": {
-        "readOnlyHint": "Tool only reads from local SQLite store (local) or synced cloud database (cloud). No write, create, update, or delete operations.",
-        "destructiveHint": "No side effects — read-only search with sanitization.",
-        "idempotentHint": "Same query returns same results within the same data state.",
-        "openWorldHint": "Tool accesses only the local Guard store or authenticated user's synced workspace data. No external API calls, web requests, or arbitrary resource access."
+      "justifications": {
+        "read_only_justification": "Only retrieves matching receipts and inventory items from the authenticated user's synced Guard workspace without creating or updating records.",
+        "open_world_justification": "Does not write to public internet state or third-party systems; operates solely within the user's private Guard workspace.",
+        "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
       }
     },
-    {
-      "name": "fetch",
-      "description": "Fetch a single Guard receipt or inventory item by its opaque namespaced ID. Returns at most 32 KiB of sanitized text.",
+    "fetch": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Opaque namespaced ID (receipt:, artifact:, inventory:, device:)."
-          }
-        },
-        "required": ["id"]
-      },
-      "output_description": "JSON envelope with contractVersion, source, generatedAt, freshness, found (boolean), and sanitized item text. If not found, found=false and text=null. Output is capped at 32 KiB with truncation flag.",
-      "tool_hint_justification": {
-        "readOnlyHint": "Tool only reads a single item by opaque ID from the local store or synced cloud database.",
-        "destructiveHint": "No side effects — read-only fetch with sanitization.",
-        "idempotentHint": "Same ID returns same result within the same data state.",
-        "openWorldHint": "Tool accesses only the local Guard store or authenticated user's synced workspace data."
+      "justifications": {
+        "read_only_justification": "Only retrieves a single receipt or inventory item by opaque ID from the authenticated user's synced Guard workspace without modifying any data.",
+        "open_world_justification": "Does not write to public internet state or third-party systems; operates solely within the user's private Guard workspace.",
+        "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
       }
     },
-    {
-      "name": "get_guard_status",
-      "description": "Report whether Guard data is available and how fresh it is. Takes no input.",
+    "get_guard_status": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
-      "input_schema": {
-        "type": "object",
-        "properties": {}
-      },
-      "output_description": "JSON envelope with contractVersion, source, generatedAt, freshness, and sanitized status fields (data availability, receipt count, last sync time). No sensitive operational details.",
-      "tool_hint_justification": {
-        "readOnlyHint": "Tool reports status metadata only — no data access or mutation.",
-        "destructiveHint": "No side effects.",
-        "idempotentHint": "Status reflects current state at call time.",
-        "openWorldHint": "Tool accesses only local or synced workspace status."
+      "justifications": {
+        "read_only_justification": "Only reports workspace status metadata such as data availability and freshness without accessing or modifying receipt data.",
+        "open_world_justification": "Does not write to public internet state or third-party systems; operates solely within the user's private Guard workspace.",
+        "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
       }
     }
-  ],
+  },
   "test_cases": [
     {
-      "name": "Search with empty query",
-      "description": "Call search with empty string query. Verify returns 0-20 sanitized results with contractVersion=guard-mcp.v1.",
-      "tool": "search",
-      "input": { "query": "" },
-      "expected_behavior": "Returns JSON envelope with results array and count ≤ 20. No UUIDs, file paths, or secrets in output."
+      "description": "User asks to search their Guard receipts for a specific term.",
+      "user_prompt": "Search my Guard receipts for AIBOM scans",
+      "file_attachment_urls": null,
+      "tools_triggered": "search",
+      "expected_output": "Returns a list of sanitized receipt summaries matching the query, each with an opaque ID, artifact name, and policy decision. Results are capped at 20.",
+      "expected_output_url": null
     },
     {
-      "name": "Search with AIBOM query",
-      "description": "Call search with 'aibom' query. Verify returns matching receipts/inventory.",
-      "tool": "search",
-      "input": { "query": "aibom" },
-      "expected_behavior": "Returns JSON envelope with results matching the query, count ≤ 20."
+      "description": "User asks for their current Guard workspace status.",
+      "user_prompt": "Show my Guard workspace status",
+      "file_attachment_urls": null,
+      "tools_triggered": "get_guard_status",
+      "expected_output": "Returns workspace status including data availability, receipt count, and last sync freshness indicator.",
+      "expected_output_url": null
     },
     {
-      "name": "Fetch non-existent receipt",
-      "description": "Call fetch with a non-existent receipt ID. Verify found=false.",
-      "tool": "fetch",
-      "input": { "id": "receipt:nonexistent000000" },
-      "expected_behavior": "Returns JSON envelope with found=false, text=null."
+      "description": "User asks to fetch a specific receipt by its opaque ID after finding it in search results.",
+      "user_prompt": "Fetch the details for receipt:1a2b3c4d5e6f7890",
+      "file_attachment_urls": null,
+      "tools_triggered": "fetch",
+      "expected_output": "Returns the full sanitized receipt text, capped at 32 KiB, with artifact metadata and policy decision details.",
+      "expected_output_url": null
     },
     {
-      "name": "Get guard status",
-      "description": "Call get_guard_status. Verify returns status with contractVersion and source.",
-      "tool": "get_guard_status",
-      "input": {},
-      "expected_behavior": "Returns JSON envelope with freshness and sanitized status fields."
+      "description": "User searches with a broad query to see all available receipts.",
+      "user_prompt": "Search my Guard receipts for everything",
+      "file_attachment_urls": null,
+      "tools_triggered": "search",
+      "expected_output": "Returns up to 20 sanitized receipt summaries. Each result includes an opaque namespaced ID for use with the fetch tool.",
+      "expected_output_url": null
     },
     {
-      "name": "Get guard status empty workspace",
-      "description": "Call get_guard_status on a workspace with no synced data.",
-      "tool": "get_guard_status",
-      "input": {},
-      "expected_behavior": "Returns status indicating no data available, no errors."
-    },
-    {
-      "name": "Fetch with stale workspace data",
-      "description": "Call fetch on a workspace with stale (old) synced data. Verify response includes freshness indicator.",
-      "tool": "fetch",
-      "input": { "id": "receipt:latest" },
-      "expected_behavior": "Returns found=true (if data exists) with freshness=stale or similar indicator."
+      "description": "User asks to check if their Guard data is up to date.",
+      "user_prompt": "Is my Guard data fresh?",
+      "file_attachment_urls": null,
+      "tools_triggered": "get_guard_status",
+      "expected_output": "Returns status with freshness indicator showing whether data is real-time or stale.",
+      "expected_output_url": null
     }
   ],
   "negative_test_cases": [
     {
-      "name": "Missing authorization token",
-      "description": "POST to MCP endpoint without Authorization header.",
-      "expected_behavior": "HTTP 401 with WWW-Authenticate: Bearer header."
+      "description": "Do not trigger for general security questions unrelated to Guard receipts.",
+      "user_prompt": "How do I secure my AWS account?",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because the request is about general security advice, not Guard receipt data.",
+      "expected_output_url": null
     },
     {
-      "name": "Invalid bearer token",
-      "description": "POST with invalid Bearer token.",
-      "expected_behavior": "HTTP 401."
+      "description": "Do not trigger for requests to approve or resolve Guard findings.",
+      "user_prompt": "Approve the latest Guard finding",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because v1 exposes only read-only tools and cannot approve, deny, or resolve findings.",
+      "expected_output_url": null
     },
     {
-      "name": "GET method not allowed",
-      "description": "GET request to MCP endpoint.",
-      "expected_behavior": "HTTP 405 Method Not Allowed."
-    },
-    {
-      "name": "Insufficient scopes",
-      "description": "POST with valid token missing guard:receipt.read scope.",
-      "expected_behavior": "HTTP 403 or JSON-RPC error indicating insufficient scopes."
-    },
-    {
-      "name": "Cross-tenant isolation",
-      "description": "Attempt to access another workspace's data.",
-      "expected_behavior": "Returns empty results or not-found — workspace is pinned from token, not from tool input."
-    },
-    {
-      "name": "No mutation tools available",
-      "description": "Verify tools/list does not expose approve, deny, policy_write, trust_write, sync, upload, delete, revoke, checkout, subscription, admin, shell, exec, create, or update tools.",
-      "expected_behavior": "Only search, fetch, get_guard_status are exposed."
-    },
-    {
-      "name": "No widget or resource registered",
-      "description": "Verify v1 does not register any widgets or resources.",
-      "expected_behavior": "No widgets or resources in server capabilities."
-    },
-    {
-      "name": "Output sanitization - no UUID leaks",
-      "description": "Verify no raw UUIDs appear in any tool output.",
-      "expected_behavior": "All IDs are opaque SHA-256-hashed namespaced IDs (receipt:, artifact:, inventory:, device:)."
-    },
-    {
-      "name": "Output sanitization - no path leaks",
-      "description": "Verify no file paths (/Users/, /home/, /tmp/, file://) appear in tool output.",
-      "expected_behavior": "No filesystem paths in any response."
-    },
-    {
-      "name": "Output sanitization - no secret leaks",
-      "description": "Verify no secrets (password, secret, api_key, token, .env) appear in tool output.",
-      "expected_behavior": "No secret values in any response."
-    },
-    {
-      "name": "Fetch output size limit",
-      "description": "Verify fetch output is capped at 32 KiB.",
-      "expected_behavior": "If text exceeds 32 KiB, it is truncated with a truncated=true flag."
-    },
-    {
-      "name": "Search result count limit",
-      "description": "Verify search returns at most 20 results.",
-      "expected_behavior": "Results array length ≤ 20."
+      "description": "Do not trigger for requests to sync or upload data to Guard.",
+      "user_prompt": "Sync my local Guard data to the cloud",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because v1 exposes only read-only tools and cannot sync, upload, or modify data.",
+      "expected_output_url": null
     }
-  ],
-  "reviewer_instructions": {
-    "data_access": "The hosted MCP endpoint reads only data already synced to the authenticated user's HOL Guard Cloud workspace. Local-only data (receipts not yet synced) is intentionally unavailable remotely. The local stdio MCP server (hol-guard CLI) provides full offline access to all local data.",
-    "security_model": "OAuth 2.1 with PKCE (S256). Bearer token required — browser session cookies cannot bypass authentication. Workspace is pinned from the validated token grant; tool input cannot access other workspaces. All output is default-deny sanitized through allowlisted fields only. IDs are opaque SHA-256 hashes with a per-process server secret.",
-    "no_mutation": "v1 exposes only read-only tools (search, fetch, get_guard_status). There are no approve, deny, policy_write, trust_write, sync, upload, delete, revoke, checkout, subscription, admin, shell, exec, create, or update tools. No widgets or resources are registered.",
-    "rate_limiting": "100 requests per minute per IP with periodic eviction. In-memory only (not Redis-backed) — documented as a production gap for future scaling.",
-    "privacy": "No user data is transmitted to third parties. All data flows between the ChatGPT client and the user's own HOL Guard workspace. The local stdio server operates entirely offline with no network access."
-  },
-  "submission_metadata": {
-    "contract_version": "guard-mcp.v1",
-    "local_cli_version": ">=2.0.1024",
-    "published_cli_version": "2.0.1037",
-    "local_mcp_transport": "stdio",
-    "cloud_mcp_transport": "streamable-http",
-    "production_endpoint": "https://hol.org/api/guard/mcp",
-    "oauth_metadata_endpoint": "https://hol.org/api/guard/oauth",
-    "merged_prs": [
-      "https://github.com/hashgraph-online/hol-guard/pull/1404",
-      "https://github.com/hashgraph-online/hol-guard/pull/1431",
-      "https://github.com/hashgraph-online/hol-guard/pull/1433",
-      "https://github.com/hashgraph-online/points-portal/pull/3942",
-      "https://github.com/hashgraph-online/points-portal/pull/3950",
-      "https://github.com/hashgraph-online/points-portal/pull/3963",
-      "https://github.com/hashgraph-online/hol-guard-plugin/pull/13"
-    ]
-  }
+  ]
 }
