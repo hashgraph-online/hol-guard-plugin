@@ -1,6 +1,10 @@
 # HOL Guard Plugin
 
-[![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fguard%2Fhashgraph-online%2Fhol-guard-plugin&style=flat-square)](https://hol.org/guard)
+[![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fguard%2Fhashgraph-online%2Fhol-guard-plugin)](https://hol.org/go/guard/sarwagyasingh69?dest=%2Fguard%2Fbilling%3Fpromo%3DGUARD20-SARWAGYASINGH69%23upgrade&link_id=8aab4f0e-d950-4ba5-89f1-5689b7c867c8&utm_source=insights_share&utm_medium=affiliate_cta&utm_campaign=share20)
+[![CI](https://github.com/hashgraph-online/hol-guard-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/hashgraph-online/hol-guard-plugin/actions/workflows/ci.yml)
+[![npm install](https://img.shields.io/badge/npm-install-CB3837?logo=npm&logoColor=white)](#setup)
+[![License](https://img.shields.io/github/license/hashgraph-online/hol-guard-plugin)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 Codex plugin for HOL Guard, the local AI security layer from [`hol-guard`](https://github.com/hashgraph-online/hol-guard).
 
