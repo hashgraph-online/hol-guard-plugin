@@ -31,8 +31,15 @@ assert(kimi.skills === './skills/', 'Kimi plugin must expose the existing skills
 assert(kimi.interface?.displayName === 'HOL Guard', 'Kimi display name mismatch');
 assert(kimi.interface?.websiteURL === 'https://hol.org/guard', 'Kimi website mismatch');
 
-const skill = await readFile(path.join(root, 'skills/hol-guard/SKILL.md'), 'utf8');
-assert(skill.includes('pipx install hol-guard'), 'Marketplace skill must preserve the documented pipx install path');
-assert(skill.includes('hol-guard'), 'Marketplace skill must delegate to the HOL Guard CLI');
+const guardSkill = await readFile(path.join(root, 'skills/hol-guard/SKILL.md'), 'utf8');
+assert(guardSkill.includes('pipx install hol-guard'), 'Marketplace skill must preserve the documented pipx install path');
+assert(guardSkill.includes('hol-guard'), 'Marketplace skill must delegate to the HOL Guard CLI');
+
+const scannerSkill = await readFile(path.join(root, 'skills/plugin-scanner/SKILL.md'), 'utf8');
+assert(scannerSkill.includes('name: plugin-scanner'), 'Scanner skill must have portable Agent Skills frontmatter');
+assert(scannerSkill.includes('pipx install hol-guard'), 'Scanner skill must install the canonical hol-guard package');
+assert(scannerSkill.includes('plugin-scanner scan'), 'Scanner skill must document repository scanning');
+assert(scannerSkill.includes('plugin-scanner lint'), 'Scanner skill must document skill/plugin linting');
+assert(scannerSkill.includes('Never execute code from the target repository'), 'Scanner skill must prohibit executing scanned code');
 
 console.log('Cross-marketplace manifest validation passed.');
