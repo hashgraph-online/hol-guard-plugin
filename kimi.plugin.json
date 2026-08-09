@@ -1,0 +1,26 @@
+{
+  "name": "hol-guard",
+  "version": "0.1.0",
+  "description": "Install and operate HOL Guard local security for AI coding agents, MCP, skills, plugins, and package actions.",
+  "keywords": [
+    "hol-guard",
+    "ai-security",
+    "agent-security",
+    "mcp",
+    "supply-chain-security"
+  ],
+  "author": {
+    "name": "Hashgraph Online",
+    "url": "https://github.com/hashgraph-online"
+  },
+  "homepage": "https://hol.org/guard",
+  "license": "Apache-2.0",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "HOL Guard",
+    "shortDescription": "Local security for AI coding agents",
+    "longDescription": "Install, initialize, inspect, and operate HOL Guard local protection for Kimi Code and other supported AI coding agents without requiring Guard Cloud.",
+    "developerName": "Hashgraph Online",
+    "websiteURL": "https://hol.org/guard"
+  }
+}
