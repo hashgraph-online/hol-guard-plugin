@@ -1,13 +1,26 @@
 # HOL Guard Plugin
 
 [![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fguard%2Fhashgraph-online%2Fhol-guard-plugin&style=flat-square)](https://hol.org/guard)
+[![skills.sh](https://skills.sh/b/hashgraph-online/hol-guard-plugin)](https://skills.sh/hashgraph-online/hol-guard-plugin)
 
 Codex plugin for HOL Guard, the local AI security layer from [`hol-guard`](https://github.com/hashgraph-online/hol-guard).
 
 HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity surfaces, then route risky changes through local approvals and receipts.
+
+## Install the security skill
+
+Install the portable `plugin-scanner` skill with the open Skills CLI:
+
+```bash
+npx skills add hashgraph-online/hol-guard-plugin --skill plugin-scanner
+```
+
+The Skills CLI supports Claude Code, Codex, Cursor, OpenCode, Cline, Kimi Code CLI, OpenClaw, and many other agents. The skill asks before installing the `hol-guard` package and never executes code from a repository just to scan it.
+
 ## What this plugin adds
 
 - A public Codex skill at [`skills/hol-guard/SKILL.md`](skills/hol-guard/SKILL.md).
+- A portable security skill at [`skills/plugin-scanner/SKILL.md`](skills/plugin-scanner/SKILL.md).
 - Guard setup guidance for Codex, Claude Code, Copilot CLI, Cursor, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity.
 - Scanner guidance for Codex plugins, Claude Code project surfaces, skills, MCP servers, and marketplace packages.
 - Helper script for common `hol-guard` and `plugin-scanner` workflows.
@@ -15,7 +28,7 @@ HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Cl
 
 ## MCP server
 
-This plugin includes a `.mcp.json` that registers the HOL Guard local MCP server (`guard-mcp.v1`). The server runs directly via the `hol-guard` binary — no `npx`, package-manager startup, or shell wrappers.
+This plugin includes a `.mcp.json` that registers the HOL Guard local MCP server (`guard-mcp.v1`). The server runs directly via the `hol-guard` binary - no `npx`, package-manager startup, or shell wrappers.
 
 ### Prerequisites
 
@@ -68,6 +81,26 @@ Verify:
 hol-guard status
 hol-guard detect --json
 ```
+
+## Dev Container feature
+
+For VS Code Dev Containers, GitHub Codespaces, and other tools that support the Dev Container specification:
+
+```json
+{
+  "features": {
+    "ghcr.io/hashgraph-online/hol-guard-plugin/hol-guard:1": {}
+  }
+}
+```
+
+The feature installs the `hol-guard` and `plugin-scanner` commands system-wide. After the container starts, run:
+
+```bash
+hol-guard init
+```
+
+The feature intentionally does not change agent configuration while the container image is being built.
 
 ## Use from Codex
 
