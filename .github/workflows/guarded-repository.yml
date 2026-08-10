@@ -1,0 +1,24 @@
+name: Guarded Repository
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+  security-events: write
+
+jobs:
+  guard:
+    uses: hashgraph-online/hol-guard/.github/workflows/guarded-repository.yml@release/3.0
+    with:
+      profile: strict-security
+      min_score: 0
+      fail_on_severity: critical
+      upload_sarif: true
+      visibility: public
