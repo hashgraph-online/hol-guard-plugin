@@ -1,0 +1,38 @@
+name: Dev Container Feature
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "test/**"
+      - ".github/workflows/devcontainer-feature.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "test/**"
+      - ".github/workflows/devcontainer-feature.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:24.04
+          - mcr.microsoft.com/devcontainers/base:ubuntu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install Dev Container CLI
+        run: npm install --global @devcontainers/cli@0.88.0
+
+      - name: Test HOL Guard feature
+        run: devcontainer features test --skip-scenarios -f hol-guard -i "${{ matrix.image }}" .
