@@ -15,7 +15,7 @@ Install the portable `plugin-scanner` skill with the open Skills CLI:
 npx skills add hashgraph-online/hol-guard-plugin --skill plugin-scanner
 ```
 
-The Skills CLI supports Claude Code, Codex, Cursor, OpenCode, Cline, Kimi Code CLI, OpenClaw, and many other agents. The skill asks before installing the `hol-guard` package and never executes code from a repository just to scan it.
+The Skills CLI supports many coding agents. The skill asks before installing the `hol-guard` package and never executes code from a repository just to scan it.
 
 ## What this plugin adds
 
@@ -81,26 +81,6 @@ Verify:
 hol-guard status
 hol-guard detect --json
 ```
-
-## Dev Container feature
-
-For VS Code Dev Containers, GitHub Codespaces, and other tools that support the Dev Container specification:
-
-```json
-{
-  "features": {
-    "ghcr.io/hashgraph-online/hol-guard-plugin/hol-guard:1": {}
-  }
-}
-```
-
-The feature installs the `hol-guard` and `plugin-scanner` commands system-wide. After the container starts, run:
-
-```bash
-hol-guard init
-```
-
-The feature intentionally does not change agent configuration while the container image is being built.
 
 ## Use from Codex
 
