@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   guard:
-    uses: hashgraph-online/hol-guard/.github/workflows/guarded-repository.yml@release/3.0
+    uses: hashgraph-online/hol-guard/.github/workflows/guarded-repository.yml@1c9fd9918aafccccac8070862970d1ff03b30340
     with:
       profile: strict-security
       min_score: 0
