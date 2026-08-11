@@ -1,0 +1,136 @@
+name: ClawHub Publish Once
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - .github/workflows/clawhub-publish-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'ops/clawhub-publish-once-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out immutable HOL Guard skill source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: be66e715f7478b99d9ac5b83f61bfd126f32e8d7
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Install pinned ClawHub CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global clawhub@0.23.3
+          clawhub --version
+
+      - name: Start one-time ClawHub device authorization
+        id: device
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH_DIR="$RUNNER_TEMP/clawhub-auth"
+          mkdir -p "$AUTH_DIR"
+          LOG="$AUTH_DIR/device.log"
+          EXIT_FILE="$AUTH_DIR/exit-code"
+
+          RUNNER_TRACKING_ID="" nohup bash -c '
+            set +e
+            clawhub login --device >"'"$LOG"'" 2>&1
+            status=$?
+            printf "%s\n" "$status" >"'"$EXIT_FILE"'"
+          ' >/dev/null 2>&1 &
+
+          for _ in $(seq 1 60); do
+            if grep -q 'clawhub.ai/cli/device' "$LOG" 2>/dev/null; then
+              break
+            fi
+            if [[ -f "$EXIT_FILE" ]]; then
+              cat "$LOG"
+              exit "$(cat "$EXIT_FILE")"
+            fi
+            sleep 1
+          done
+
+          if ! grep -q 'clawhub.ai/cli/device' "$LOG" 2>/dev/null; then
+            echo 'ClawHub did not emit a device authorization prompt.'
+            cat "$LOG" || true
+            exit 1
+          fi
+
+          cp "$LOG" "$RUNNER_TEMP/clawhub-device-authorization.txt"
+
+      - name: Upload one-time authorization prompt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: clawhub-device-authorization
+          path: ${{ runner.temp }}/clawhub-device-authorization.txt
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Wait for browser authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH_DIR="$RUNNER_TEMP/clawhub-auth"
+          LOG="$AUTH_DIR/device.log"
+          EXIT_FILE="$AUTH_DIR/exit-code"
+
+          for _ in $(seq 1 600); do
+            if [[ -f "$EXIT_FILE" ]]; then
+              status="$(cat "$EXIT_FILE")"
+              if [[ "$status" != "0" ]]; then
+                cat "$LOG"
+                exit "$status"
+              fi
+              clawhub whoami
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo 'Timed out waiting for ClawHub device authorization.'
+          cat "$LOG" || true
+          exit 1
+
+      - name: Dry-run HOL Guard skill publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          clawhub skill publish distributions/clawhub/hol-guard \
+            --slug hol-guard \
+            --name "HOL Guard" \
+            --categories security,development,operations \
+            --topics "supply-chain,prompt-injection,ai-security,developer-tools,open-source" \
+            --dry-run | tee "$RUNNER_TEMP/clawhub-dry-run.txt"
+
+      - name: Publish HOL Guard skill
+        shell: bash
+        run: |
+          set -euo pipefail
+          clawhub skill publish distributions/clawhub/hol-guard \
+            --slug hol-guard \
+            --name "HOL Guard" \
+            --categories security,development,operations \
+            --topics "supply-chain,prompt-injection,ai-security,developer-tools,open-source" \
+            | tee "$RUNNER_TEMP/clawhub-publish.txt"
+
+      - name: Upload publish evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: clawhub-publish-evidence
+          path: |
+            ${{ runner.temp }}/clawhub-dry-run.txt
+            ${{ runner.temp }}/clawhub-publish.txt
+          retention-days: 7
+          if-no-files-found: ignore
