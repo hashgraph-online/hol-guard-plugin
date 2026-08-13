@@ -1,0 +1,11 @@
+{
+  "name": "hol-guard",
+  "version": "1.0.0",
+  "contextFileName": "skills${/}hol-guard${/}SKILL.md",
+  "mcpServers": {
+    "hol-guard": {
+      "command": "hol-guard",
+      "args": ["guard", "mcp", "serve", "--stdio"]
+    }
+  }
+}
