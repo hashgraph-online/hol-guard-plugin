@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   validate:
-    name: Validate GitHub Agent Skills
+    name: Validate Agent Skills distribution
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out immutable source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -40,6 +40,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh skill publish --dry-run .
+
+      - name: Validate skills.sh install compatibility without telemetry
+        env:
+          DISABLE_TELEMETRY: "1"
+          NPM_CONFIG_IGNORE_SCRIPTS: "true"
+        run: |
+          set -euo pipefail
+          smoke_dir="$RUNNER_TEMP/skills-sh-validation"
+          mkdir -p "$smoke_dir"
+          cd "$smoke_dir"
+
+          npm exec --yes --package=skills@1.5.22 -- skills add \
+            hashgraph-online/hol-guard-plugin \
+            --agent claude-code \
+            --skill hol-guard plugin-scanner \
+            --yes \
+            --copy
+
+          test "$(find . -type f -path '*/hol-guard/SKILL.md' | wc -l)" -ge 1
+          test "$(find . -type f -path '*/plugin-scanner/SKILL.md' | wc -l)" -ge 1
 
   publish:
     name: Publish versioned GitHub Agent Skills
