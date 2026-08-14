@@ -1,0 +1,96 @@
+name: Publish Agent Skills
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate GitHub Agent Skills
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out immutable source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+
+      - name: Install pinned GitHub CLI with Agent Skills support
+        env:
+          GH_VERSION: "2.92.0"
+          GH_SHA256: "b57848131bdf0c229cd35e1f2a51aa718199858b2e728410b37e89a428943ec4"
+        run: |
+          set -euo pipefail
+          archive="gh_${GH_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            "https://github.com/cli/cli/releases/download/v${GH_VERSION}/${archive}" \
+            --output "$archive"
+          printf '%s  %s\n' "$GH_SHA256" "$archive" | sha256sum --check --strict
+          tar -xzf "$archive"
+          install -m 0755 "gh_${GH_VERSION}_linux_amd64/bin/gh" "$RUNNER_TEMP/gh"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/gh" version
+
+      - name: Validate skills against GitHub's Agent Skills publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh skill publish --dry-run .
+
+  publish:
+    name: Publish versioned GitHub Agent Skills
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact main commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install pinned GitHub CLI with Agent Skills support
+        env:
+          GH_VERSION: "2.92.0"
+          GH_SHA256: "b57848131bdf0c229cd35e1f2a51aa718199858b2e728410b37e89a428943ec4"
+        run: |
+          set -euo pipefail
+          archive="gh_${GH_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            "https://github.com/cli/cli/releases/download/v${GH_VERSION}/${archive}" \
+            --output "$archive"
+          printf '%s  %s\n' "$GH_SHA256" "$archive" | sha256sum --check --strict
+          tar -xzf "$archive"
+          install -m 0755 "gh_${GH_VERSION}_linux_amd64/bin/gh" "$RUNNER_TEMP/gh"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/gh" version
+
+      - name: Resolve immutable skills release tag
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./package.json").version')
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid package version: $version" >&2
+            exit 1
+          fi
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish skills if this version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Agent Skills release $TAG already exists; validation passed and no republish is needed."
+            exit 0
+          fi
+          gh skill publish --tag "$TAG" .
