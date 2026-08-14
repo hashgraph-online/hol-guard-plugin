@@ -1,0 +1,30 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "hol-guard",
+  "homepage": "https://hol.org/guard",
+  "repository": "https://github.com/hashgraph-online/hol-guard-plugin",
+  "owner": {
+    "name": "Hashgraph Online"
+  },
+  "metadata": {
+    "version": "0.1.0",
+    "description": "Local security controls and pre-install scanning for AI coding agents, Agent Skills, plugins, MCP servers, and package actions."
+  },
+  "plugins": [
+    {
+      "name": "hol-guard",
+      "source": "./",
+      "description": "Install and operate HOL Guard local security for AI coding agents, MCP, skills, plugins, and package actions.",
+      "version": "0.1.0",
+      "repository": "https://github.com/hashgraph-online/hol-guard-plugin",
+      "license": "Apache-2.0",
+      "keywords": [
+        "hol-guard",
+        "ai-security",
+        "agent-security",
+        "mcp",
+        "supply-chain-security"
+      ]
+    }
+  ]
+}
