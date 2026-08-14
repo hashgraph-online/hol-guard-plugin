@@ -14,11 +14,26 @@ async function load(relativePath) {
   return JSON.parse(await readFile(path.join(root, relativePath), 'utf8'));
 }
 
+const portable = await load('plugin.json');
+assert(portable.$schema === 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', 'Portable manifest must use Agent Plugins v1 schema');
+assert(portable.name === 'hol-guard', 'Portable plugin name must be hol-guard');
+assert(portable.repository === 'https://github.com/hashgraph-online/hol-guard-plugin', 'Portable repository mismatch');
+assert(portable.license === 'Apache-2.0', 'Portable license mismatch');
+
 const copilot = await load('.github/plugin/plugin.json');
 assert(copilot.$schema === 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', 'Copilot manifest must use Agent Plugins v1 schema');
 assert(copilot.name === 'hol-guard', 'Copilot plugin name must be hol-guard');
 assert(copilot.repository === 'https://github.com/hashgraph-online/hol-guard-plugin', 'Copilot repository mismatch');
 assert(copilot.license === 'Apache-2.0', 'Copilot license mismatch');
+
+const marketplace = await load('.github/plugin/marketplace.json');
+assert(marketplace.name === 'hol-guard-plugins', 'Copilot marketplace name mismatch');
+assert(marketplace.owner?.name === 'Hashgraph Online', 'Copilot marketplace owner mismatch');
+assert(marketplace.plugins?.length === 1, 'Copilot marketplace must expose exactly one intended plugin');
+assert(marketplace.plugins[0]?.name === 'hol-guard', 'Copilot marketplace plugin name mismatch');
+assert(marketplace.plugins[0]?.source === './', 'Copilot marketplace must install the repository root');
+assert(marketplace.plugins[0]?.repository === 'https://github.com/hashgraph-online/hol-guard-plugin', 'Copilot marketplace repository mismatch');
+assert(marketplace.plugins[0]?.license === 'Apache-2.0', 'Copilot marketplace license mismatch');
 
 const claude = await load('.claude-plugin/plugin.json');
 assert(claude.name === 'hol-guard', 'Claude-compatible plugin name must be hol-guard');
@@ -30,6 +45,10 @@ assert(kimi.name === 'hol-guard', 'Kimi plugin name must be hol-guard');
 assert(kimi.skills === './skills/', 'Kimi plugin must expose the existing skills directory');
 assert(kimi.interface?.displayName === 'HOL Guard', 'Kimi display name mismatch');
 assert(kimi.interface?.websiteURL === 'https://hol.org/guard', 'Kimi website mismatch');
+
+const portableMcp = await load('mcp.json');
+assert(portableMcp.mcpServers?.['hol-guard']?.command === 'hol-guard', 'Portable MCP command mismatch');
+assert(JSON.stringify(portableMcp.mcpServers?.['hol-guard']?.args) === JSON.stringify(['guard', 'mcp', 'serve', '--stdio']), 'Portable MCP arguments mismatch');
 
 const guardSkill = await readFile(path.join(root, 'skills/hol-guard/SKILL.md'), 'utf8');
 assert(guardSkill.includes('pipx install hol-guard'), 'Marketplace skill must preserve the documented pipx install path');
