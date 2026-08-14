@@ -1,0 +1,14 @@
+{
+  "name": "hashgraph-online/hol-guard-plugin",
+  "version": "0.1.1",
+  "summary": "Local-first AI agent security and pre-trust scanning for Agent Skills, plugins, MCP servers, packages, and supported coding-agent workflows.",
+  "private": false,
+  "skills": {
+    "hol-guard": {
+      "path": "skills/hol-guard/SKILL.md"
+    },
+    "plugin-scanner": {
+      "path": "skills/plugin-scanner/SKILL.md"
+    }
+  }
+}
