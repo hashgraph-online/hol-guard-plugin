@@ -1,6 +1,7 @@
 ---
 name: plugin-scanner
 description: Scan AI agent skills, plugins, MCP servers, and agent tooling for prompt injection, unsafe commands, secret exposure, and supply-chain risks before installing or trusting them.
+license: Apache-2.0
 ---
 
 # Plugin Scanner
