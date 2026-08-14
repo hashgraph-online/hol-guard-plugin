@@ -1,0 +1,31 @@
+{
+  "name": "hol-guard",
+  "displayName": "HOL Guard",
+  "version": "0.1.0",
+  "description": "Local-first AI agent security with pre-action protection, MCP visibility, approvals, receipts, and plugin/skill scanning.",
+  "author": {
+    "name": "Hashgraph Online"
+  },
+  "publisher": "Hashgraph Online",
+  "homepage": "https://hol.org/guard",
+  "repository": "https://github.com/hashgraph-online/hol-guard-plugin",
+  "license": "Apache-2.0",
+  "logo": "./assets/icon.png",
+  "keywords": [
+    "ai-security",
+    "agent-security",
+    "mcp-security",
+    "plugin-scanner",
+    "supply-chain",
+    "prompt-injection"
+  ],
+  "category": "security",
+  "tags": [
+    "security",
+    "mcp",
+    "agent-skills",
+    "guardrails"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json"
+}
