@@ -1,0 +1,33 @@
+{
+  "name": "hol-guard-plugins",
+  "owner": {
+    "name": "Hashgraph Online",
+    "email": "dev@hol.org"
+  },
+  "metadata": {
+    "description": "Hashgraph Online security plugins for AI coding agents.",
+    "version": "0.1.1"
+  },
+  "plugins": [
+    {
+      "name": "hol-guard",
+      "source": "./",
+      "description": "Protect AI agent workflows with HOL Guard and scan Agent Skills, plugins, MCP servers, and packages before trust.",
+      "version": "0.1.1",
+      "author": {
+        "name": "Hashgraph Online",
+        "url": "https://github.com/hashgraph-online"
+      },
+      "homepage": "https://hol.org/guard",
+      "repository": "https://github.com/hashgraph-online/hol-guard-plugin",
+      "license": "Apache-2.0",
+      "keywords": [
+        "security",
+        "agent-skills",
+        "mcp",
+        "ai-security",
+        "supply-chain-security"
+      ]
+    }
+  ]
+}
