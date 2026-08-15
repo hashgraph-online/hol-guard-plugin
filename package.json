@@ -5,7 +5,7 @@
   "description": "Codex plugin for HOL Guard AI security workflows.",
   "license": "Apache-2.0",
   "scripts": {
-    "test": "node tests/validate-plugin.mjs && node tests/validate-marketplace-manifests.mjs && node tests/validate-clawhub.mjs"
+    "test": "node tests/validate-plugin.mjs && node tests/validate-marketplace-manifests.mjs && node tests/validate-clawhub.mjs && node tests/validate-wshobson-agents.mjs"
   },
   "engines": {
     "node": ">=20"
