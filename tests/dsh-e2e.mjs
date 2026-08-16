@@ -95,9 +95,9 @@ async function startMockProvider({ command }) {
       }
       writeSse(response, '[DONE]');
       response.end();
-    } catch (error) {
+    } catch {
       response.writeHead(500, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ error: { message: String(error) } }));
+      response.end(JSON.stringify({ error: { message: 'mock inference provider failure' } }));
     }
   });
   await new Promise((resolve, reject) => {
