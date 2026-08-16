@@ -26,8 +26,16 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Validate manifest and assets
+      - name: Validate manifests, assets, and DSH gate
         run: npm test
+
+      - name: Install pinned DSH test runtime
+        run: |
+          npm install --global pnpm@11.7.0
+          npm install --no-save --package-lock=false @deepseek-ai/dsh@0.1.0-rc.5
+
+      - name: Run real DSH headless integration
+        run: npm run test:dsh-e2e
 
       - name: Install Codex Plugin Scanner
         run: python3 -m pip install --user "codex-plugin-scanner[cisco]==2.0.12"
