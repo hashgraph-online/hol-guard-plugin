@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  cat <<'EOF'
+  cat <<'HELP'
 HOL Guard Plugin helper
 
 Usage:
@@ -24,23 +24,24 @@ Commands:
   scan-system Explain and scan Codex, Claude, MCP, skills, or marketplace surfaces.
   evidence    Show receipts, inventory, and events.
   approvals   Show pending approvals and approval-center hint.
-EOF
+HELP
 }
 
 supported_harnesses() {
-  cat <<'EOF'
+  cat <<'HELP'
 Supported HOL Guard harness systems
 
-Harness       Aliases                    Guard command
-codex         codex                      hol-guard install codex
-claude-code   claude, claude_code        hol-guard install claude-code
-copilot       copilot, copilot-cli       hol-guard install copilot
-cursor        cursor                     hol-guard install cursor
-gemini        gemini, gemini-cli         hol-guard install gemini
-hermes        hermes                     hol-guard hermes bootstrap
-openclaw      openclaw, open-claw        hol-guard install openclaw
-opencode      opencode, open-code        hol-guard install opencode
-antigravity   antigravity                hol-guard install antigravity
+Harness       Aliases                              Guard command
+codex         codex                                hol-guard install codex
+claude-code   claude, claude_code                  hol-guard install claude-code
+copilot       copilot, copilot-cli                 hol-guard install copilot
+cursor        cursor                               hol-guard install cursor
+dsh           dsh, deepseek-harness, deepseek_harness  hol-guard install dsh
+gemini        gemini, gemini-cli                   hol-guard install gemini
+hermes        hermes                               hol-guard hermes bootstrap
+openclaw      openclaw, open-claw                  hol-guard install openclaw
+opencode      opencode, open-code                  hol-guard install opencode
+antigravity   antigravity                          hol-guard install antigravity
 
 Scanner systems
 codex         .codex-plugin/plugin.json, .agents/plugins/marketplace.json, skills/
@@ -48,7 +49,7 @@ claude        .claude/settings.local.json, .claude/agents, hooks, MCP config
 mcp           MCP server config and tool surfaces
 skills        SKILL.md packages and skill folders
 marketplace   Codex or agent plugin marketplace roots
-EOF
+HELP
 }
 
 normalize_harness() {
@@ -58,6 +59,7 @@ normalize_harness() {
     claude|claude_code|claude-code) echo "claude-code" ;;
     copilot|copilot-cli|copilot_cli) echo "copilot" ;;
     cursor) echo "cursor" ;;
+    dsh|deepseek-harness|deepseek_harness) echo "dsh" ;;
     gemini|gemini-cli|gemini_cli) echo "gemini" ;;
     hermes) echo "hermes" ;;
     openclaw|open-claw|open_claw) echo "openclaw" ;;
@@ -87,7 +89,7 @@ status() {
 }
 
 install_hint() {
-  cat <<'EOF'
+  cat <<'HELP'
 Recommended:
   pipx install hol-guard
 
@@ -96,7 +98,7 @@ Fallback:
 
 Verify:
   hol-guard status
-EOF
+HELP
 }
 
 protect() {
