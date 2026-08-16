@@ -29,7 +29,7 @@ jobs:
       - name: Validate manifests, assets, and DSH gate
         run: npm test
 
-      - name: Install pinned official DSH runtime
+      - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
           DSH_SOURCE: ${{ runner.temp }}/deepseek-harness
@@ -38,6 +38,7 @@ jobs:
           git clone --filter=blob:none https://github.com/deepseek-ai/deepseek-harness.git "$DSH_SOURCE"
           git -C "$DSH_SOURCE" checkout --detach "$DSH_COMMIT"
           pnpm --dir "$DSH_SOURCE" install --frozen-lockfile
+          pnpm --dir "$DSH_SOURCE" run build:lib
 
       - name: Run real DSH headless integration
         env:
