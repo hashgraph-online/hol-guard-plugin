@@ -7,8 +7,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const dshBin = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh');
-await access(dshBin);
+const sourceCheckout = typeof process.env.DSH_SOURCE === 'string' && process.env.DSH_SOURCE.trim()
+  ? path.resolve(process.env.DSH_SOURCE.trim())
+  : null;
+const dshCommand = sourceCheckout === null
+  ? path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
+  : (process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm');
+const dshPrefixArgs = sourceCheckout === null ? [] : ['--dir', sourceCheckout, 'dsh'];
+if (sourceCheckout === null) await access(dshCommand);
+else await access(path.join(sourceCheckout, 'package.json'));
 
 function shellQuote(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
@@ -32,6 +39,10 @@ async function run(command, args, options = {}) {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code: code ?? 1, signal, stdout, stderr }));
   });
+}
+
+function runDsh(args, options = {}) {
+  return run(dshCommand, [...dshPrefixArgs, ...args], options);
 }
 
 function writeSse(response, payload) {
@@ -160,14 +171,14 @@ async function runScenario({ protectedByGuard }) {
       const guardCommand = await createFakeGuard(tempDir, guardLog);
       env.HOL_GUARD_COMMAND = guardCommand;
       env.HOL_GUARD_DSH_TIMEOUT_MS = '5000';
-      const install = await run(dshBin, ['plugin', '--profile', 'headless', 'add', root], { env, cwd: workspace });
+      const install = await runDsh(['plugin', '--profile', 'headless', 'add', root], { env, cwd: workspace });
       assert.equal(install.code, 0, `DSH plugin install failed:\n${install.stdout}\n${install.stderr}`);
-      const dumped = await run(dshBin, ['--profile', 'headless', '--dump-config'], { env, cwd: workspace });
+      const dumped = await runDsh(['--profile', 'headless', '--dump-config'], { env, cwd: workspace });
       assert.equal(dumped.code, 0, `DSH config dump failed:\n${dumped.stdout}\n${dumped.stderr}`);
       assert.match(`${dumped.stdout}\n${dumped.stderr}`, /hol-guard/);
     }
 
-    const result = await run(dshBin, ['--profile', 'headless', 'Write the integration sentinel with bash.'], {
+    const result = await runDsh(['--profile', 'headless', 'Write the integration sentinel with bash.'], {
       env,
       cwd: workspace,
     });
