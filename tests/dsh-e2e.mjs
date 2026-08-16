@@ -1,0 +1,202 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const dshBin = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh');
+await access(dshBin);
+
+function shellQuote(value) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+async function run(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd ?? root,
+      env: options.env ?? process.env,
+      shell: false,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({ code: code ?? 1, signal, stdout, stderr }));
+  });
+}
+
+function writeSse(response, payload) {
+  response.write(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`);
+}
+
+async function startMockProvider({ command }) {
+  const requests = [];
+  const server = createServer(async (request, response) => {
+    try {
+      assert.equal(request.method, 'POST');
+      assert.ok(request.url === '/chat/completions' || request.url === '/v1/chat/completions');
+      assert.equal(request.headers.authorization, 'Bearer mock-key');
+      let raw = '';
+      request.setEncoding('utf8');
+      for await (const chunk of request) raw += chunk;
+      const body = JSON.parse(raw);
+      requests.push(body);
+
+      response.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      });
+      if (requests.length === 1) {
+        const args = JSON.stringify({ command, description: 'Write the DSH integration sentinel' });
+        const midpoint = Math.max(1, Math.floor(args.length / 2));
+        writeSse(response, {
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: 'hol-guard-dsh-e2e-call',
+                type: 'function',
+                function: { name: 'bash', arguments: args.slice(0, midpoint) },
+              }],
+            },
+            finish_reason: null,
+          }],
+        });
+        writeSse(response, {
+          choices: [{
+            index: 0,
+            delta: { tool_calls: [{ index: 0, function: { arguments: args.slice(midpoint) } }] },
+            finish_reason: null,
+          }],
+        });
+        writeSse(response, {
+          choices: [{ index: 0, delta: { content: '' }, finish_reason: 'tool_calls' }],
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+        });
+      } else {
+        writeSse(response, {
+          choices: [{ index: 0, delta: { content: 'DSH integration scenario completed.' }, finish_reason: null }],
+        });
+        writeSse(response, {
+          choices: [{ index: 0, delta: { content: '' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 3, completion_tokens: 4 },
+        });
+      }
+      writeSse(response, '[DONE]');
+      response.end();
+    } catch (error) {
+      response.writeHead(500, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: { message: String(error) } }));
+    }
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  return {
+    requests,
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+  };
+}
+
+async function createFakeGuard(tempDir, logPath) {
+  const script = path.join(tempDir, 'fake-hol-guard.mjs');
+  await writeFile(script, `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+let input = '';
+process.stdin.setEncoding('utf8');
+for await (const chunk of process.stdin) input += chunk;
+const args = process.argv.slice(2);
+if (!args.includes('guard') || !args.includes('hook') || !args.includes('dsh')) process.exit(64);
+const payload = JSON.parse(input);
+appendFileSync(${JSON.stringify(logPath)}, JSON.stringify(payload) + '\\n');
+console.log(JSON.stringify({
+  hookSpecificOutput: {
+    hookEventName: 'PreToolUse',
+    permissionDecision: 'deny',
+    permissionDecisionReason: 'HOL Guard DSH end-to-end policy denial',
+  },
+}));
+process.exitCode = 2;
+`, 'utf8');
+  await chmod(script, 0o755);
+  return script;
+}
+
+async function runScenario({ protectedByGuard }) {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), protectedByGuard ? 'dsh-guard-' : 'dsh-control-'));
+  const dshHome = path.join(tempDir, '.dsh');
+  const workspace = path.join(tempDir, 'workspace');
+  const sentinel = path.join(tempDir, 'sentinel.txt');
+  const guardLog = path.join(tempDir, 'guard.jsonl');
+  await writeFile(path.join(tempDir, '.keep'), '');
+  await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace, { recursive: true }));
+  const command = `printf executed > ${shellQuote(sentinel)}`;
+  const provider = await startMockProvider({ command });
+  const env = {
+    ...process.env,
+    DSH_HOME: dshHome,
+    DEEPSEEK_BASE_URL: provider.baseUrl,
+    DEEPSEEK_API_KEY: 'mock-key',
+    NO_COLOR: '1',
+  };
+
+  try {
+    if (protectedByGuard) {
+      const guardCommand = await createFakeGuard(tempDir, guardLog);
+      env.HOL_GUARD_COMMAND = guardCommand;
+      env.HOL_GUARD_DSH_TIMEOUT_MS = '5000';
+      const install = await run(dshBin, ['plugin', '--profile', 'headless', 'add', root], { env, cwd: workspace });
+      assert.equal(install.code, 0, `DSH plugin install failed:\n${install.stdout}\n${install.stderr}`);
+      const dumped = await run(dshBin, ['--profile', 'headless', '--dump-config'], { env, cwd: workspace });
+      assert.equal(dumped.code, 0, `DSH config dump failed:\n${dumped.stdout}\n${dumped.stderr}`);
+      assert.match(`${dumped.stdout}\n${dumped.stderr}`, /hol-guard/);
+    }
+
+    const result = await run(dshBin, ['--profile', 'headless', 'Write the integration sentinel with bash.'], {
+      env,
+      cwd: workspace,
+    });
+    const combined = `${result.stdout}\n${result.stderr}`;
+    assert.ok(result.code === 0 || /HOL Guard DSH end-to-end policy denial/.test(combined), `DSH run failed before policy enforcement:\n${combined}`);
+    assert.ok(provider.requests.length >= 1, 'DSH never reached the mock inference endpoint');
+
+    let sentinelExists = true;
+    try {
+      await access(sentinel);
+    } catch {
+      sentinelExists = false;
+    }
+    if (protectedByGuard) {
+      assert.equal(sentinelExists, false, 'DSH executed a command that HOL Guard denied');
+      const records = (await readFile(guardLog, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+      assert.ok(records.length >= 1, 'HOL Guard did not receive a DSH tool event');
+      assert.equal(records[0].hook_event_name, 'PreToolUse');
+      assert.equal(records[0].tool_name, 'bash');
+      assert.equal(records[0].tool_input.command, command);
+    } else {
+      assert.equal(sentinelExists, true, `Unprotected DSH control did not execute its bash tool:\n${combined}`);
+    }
+  } finally {
+    await provider.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+await runScenario({ protectedByGuard: false });
+await runScenario({ protectedByGuard: true });
+console.log('DSH real-runtime end-to-end test passed.');
