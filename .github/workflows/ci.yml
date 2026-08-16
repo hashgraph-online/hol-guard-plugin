@@ -31,7 +31,7 @@ jobs:
 
       - name: Install pinned DSH test runtime
         run: |
-          npm install --global pnpm@11.7.0
+          npm install --global pnpm@11.17.0
           npm install --no-save --package-lock=false @deepseek-ai/dsh@0.1.0-rc.5
 
       - name: Run real DSH headless integration
