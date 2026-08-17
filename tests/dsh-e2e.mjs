@@ -152,7 +152,7 @@ async function runScenario({ protectedByGuard }) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), protectedByGuard ? 'dsh-guard-' : 'dsh-control-'));
   const dshHome = path.join(tempDir, '.dsh');
   const workspace = path.join(tempDir, 'workspace');
-  const sentinel = path.join(tempDir, 'sentinel.txt');
+  const sentinel = path.join(workspace, 'sentinel.txt');
   const guardLog = path.join(tempDir, 'guard.jsonl');
   await writeFile(path.join(tempDir, '.keep'), '');
   await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace, { recursive: true }));
