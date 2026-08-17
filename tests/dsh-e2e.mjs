@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,8 +49,19 @@ function writeSse(response, payload) {
   response.write(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`);
 }
 
+function writeAssistantStart(response) {
+  writeSse(response, {
+    choices: [{
+      index: 0,
+      delta: { role: 'assistant', content: null, reasoning_content: '' },
+      finish_reason: null,
+    }],
+  });
+}
+
 async function startMockProvider({ command }) {
   const requests = [];
+  const errors = [];
   const server = createServer(async (request, response) => {
     try {
       assert.equal(request.method, 'POST');
@@ -67,6 +78,7 @@ async function startMockProvider({ command }) {
         'cache-control': 'no-cache',
         connection: 'keep-alive',
       });
+      writeAssistantStart(response);
       if (requests.length === 1) {
         const args = JSON.stringify({ command, description: 'Write the DSH integration sentinel' });
         const midpoint = Math.max(1, Math.floor(args.length / 2));
@@ -97,7 +109,11 @@ async function startMockProvider({ command }) {
         });
       } else {
         writeSse(response, {
-          choices: [{ index: 0, delta: { content: 'DSH integration scenario completed.' }, finish_reason: null }],
+          choices: [{
+            index: 0,
+            delta: { content: 'DSH integration scenario completed.' },
+            finish_reason: null,
+          }],
         });
         writeSse(response, {
           choices: [{ index: 0, delta: { content: '' }, finish_reason: 'stop' }],
@@ -106,8 +122,9 @@ async function startMockProvider({ command }) {
       }
       writeSse(response, '[DONE]');
       response.end();
-    } catch {
-      response.writeHead(500, { 'content-type': 'application/json' });
+    } catch (error) {
+      errors.push(error instanceof Error ? error.stack ?? error.message : String(error));
+      if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: { message: 'mock inference provider failure' } }));
     }
   });
@@ -119,6 +136,7 @@ async function startMockProvider({ command }) {
   assert.ok(address && typeof address === 'object');
   return {
     requests,
+    errors,
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
   };
@@ -149,18 +167,27 @@ process.exitCode = 2;
 }
 
 async function runScenario({ protectedByGuard }) {
+  const scenario = protectedByGuard ? 'protected' : 'control';
   const tempDir = await mkdtemp(path.join(os.tmpdir(), protectedByGuard ? 'dsh-guard-' : 'dsh-control-'));
   const dshHome = path.join(tempDir, '.dsh');
+  const dshConfigDir = path.join(tempDir, 'config');
   const workspace = path.join(tempDir, 'workspace');
   const sentinel = path.join(workspace, 'sentinel.txt');
   const guardLog = path.join(tempDir, 'guard.jsonl');
-  await writeFile(path.join(tempDir, '.keep'), '');
-  await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace, { recursive: true }));
+  await mkdir(workspace, { recursive: true });
   const command = `printf executed > ${shellQuote(sentinel)}`;
   const provider = await startMockProvider({ command });
+  const {
+    HOL_GUARD_COMMAND: _guardCommand,
+    HOL_GUARD_DSH_TIMEOUT_MS: _guardTimeout,
+    DSH_HOME: _dshHome,
+    DSH_CONFIG_DIR: _dshConfigDir,
+    ...baseEnv
+  } = process.env;
   const env = {
-    ...process.env,
+    ...baseEnv,
     DSH_HOME: dshHome,
+    DSH_CONFIG_DIR: dshConfigDir,
     DEEPSEEK_BASE_URL: provider.baseUrl,
     DEEPSEEK_API_KEY: 'mock-key',
     NO_COLOR: '1',
@@ -183,8 +210,12 @@ async function runScenario({ protectedByGuard }) {
       cwd: workspace,
     });
     const combined = `${result.stdout}\n${result.stderr}`;
-    assert.ok(result.code === 0 || /HOL Guard DSH end-to-end policy denial/.test(combined), `DSH run failed before policy enforcement:\n${combined}`);
-    assert.ok(provider.requests.length >= 1, 'DSH never reached the mock inference endpoint');
+    assert.deepEqual(provider.errors, [], `Mock provider failed during ${scenario} scenario:\n${provider.errors.join('\n')}`);
+    assert.ok(
+      result.code === 0 || /HOL Guard DSH end-to-end policy denial/.test(combined),
+      `DSH ${scenario} run failed before policy enforcement:\n${combined}`,
+    );
+    assert.ok(provider.requests.length >= 1, `DSH ${scenario} run never reached the mock inference endpoint`);
 
     let sentinelExists = true;
     try {
