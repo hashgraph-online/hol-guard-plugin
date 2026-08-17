@@ -49,13 +49,77 @@ function writeSse(response, payload) {
   response.write(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`);
 }
 
+function usage(promptTokens, completionTokens) {
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: promptTokens + completionTokens,
+    prompt_tokens_details: { cached_tokens: 0 },
+    prompt_cache_hit_tokens: 0,
+    prompt_cache_miss_tokens: promptTokens,
+  };
+}
+
 function writeAssistantStart(response) {
   writeSse(response, {
     choices: [{
-      index: 0,
-      delta: { role: 'assistant', content: null, reasoning_content: '' },
-      finish_reason: null,
+      delta: {
+        content: null,
+        reasoning_content: '',
+        role: 'assistant',
+      },
     }],
+  });
+}
+
+function writeToolCallResponse(response, command) {
+  const toolArguments = JSON.stringify({
+    command,
+    description: 'Write the DSH integration sentinel',
+  });
+  writeAssistantStart(response);
+  writeSse(response, {
+    choices: [{
+      delta: {
+        content: null,
+        reasoning_content: null,
+        tool_calls: [{
+          function: {
+            arguments: toolArguments,
+            name: 'bash',
+          },
+          id: 'hol-guard-dsh-e2e-call',
+          type: 'function',
+          index: 0,
+        }],
+      },
+    }],
+  });
+  writeSse(response, {
+    choices: [{
+      delta: {
+        content: '',
+        reasoning_content: null,
+      },
+      finish_reason: 'tool_calls',
+    }],
+    usage: usage(3, 2),
+  });
+}
+
+function writeTextResponse(response) {
+  writeAssistantStart(response);
+  writeSse(response, {
+    choices: [{
+      delta: {
+        content: 'DSH integration scenario completed.',
+        reasoning_content: null,
+      },
+    }],
+  });
+  writeSse(response, {
+    choices: [{ delta: {} }],
+    usage: usage(3, 4),
   });
 }
 
@@ -78,48 +142,8 @@ async function startMockProvider({ command }) {
         'cache-control': 'no-cache',
         connection: 'keep-alive',
       });
-      writeAssistantStart(response);
-      if (requests.length === 1) {
-        const args = JSON.stringify({ command, description: 'Write the DSH integration sentinel' });
-        const midpoint = Math.max(1, Math.floor(args.length / 2));
-        writeSse(response, {
-          choices: [{
-            index: 0,
-            delta: {
-              tool_calls: [{
-                index: 0,
-                id: 'hol-guard-dsh-e2e-call',
-                type: 'function',
-                function: { name: 'bash', arguments: args.slice(0, midpoint) },
-              }],
-            },
-            finish_reason: null,
-          }],
-        });
-        writeSse(response, {
-          choices: [{
-            index: 0,
-            delta: { tool_calls: [{ index: 0, function: { arguments: args.slice(midpoint) } }] },
-            finish_reason: null,
-          }],
-        });
-        writeSse(response, {
-          choices: [{ index: 0, delta: { content: '' }, finish_reason: 'tool_calls' }],
-          usage: { prompt_tokens: 3, completion_tokens: 2 },
-        });
-      } else {
-        writeSse(response, {
-          choices: [{
-            index: 0,
-            delta: { content: 'DSH integration scenario completed.' },
-            finish_reason: null,
-          }],
-        });
-        writeSse(response, {
-          choices: [{ index: 0, delta: { content: '' }, finish_reason: 'stop' }],
-          usage: { prompt_tokens: 3, completion_tokens: 4 },
-        });
-      }
+      if (requests.length === 1) writeToolCallResponse(response, command);
+      else writeTextResponse(response);
       writeSse(response, '[DONE]');
       response.end();
     } catch (error) {
