@@ -10,12 +10,15 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const sourceCheckout = typeof process.env.DSH_SOURCE === 'string' && process.env.DSH_SOURCE.trim()
   ? path.resolve(process.env.DSH_SOURCE.trim())
   : null;
-const dshCommand = sourceCheckout === null
+const sourceDshEntry = sourceCheckout === null
+  ? null
+  : path.join(sourceCheckout, 'apps', 'cli', 'lib', 'bin.js');
+const dshCommand = sourceDshEntry === null
   ? path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
-  : (process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm');
-const dshPrefixArgs = sourceCheckout === null ? [] : ['--dir', sourceCheckout, 'dsh'];
-if (sourceCheckout === null) await access(dshCommand);
-else await access(path.join(sourceCheckout, 'package.json'));
+  : process.execPath;
+const dshPrefixArgs = sourceDshEntry === null ? [] : [sourceDshEntry];
+if (sourceDshEntry === null) await access(dshCommand);
+else await access(sourceDshEntry);
 
 function shellQuote(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
