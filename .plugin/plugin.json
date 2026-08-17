@@ -1,0 +1,5 @@
+{
+  "name": "hol-guard",
+  "description": "Local-first security for AI coding agents, MCP servers, skills, plugins, and package actions, including pre-action protection and portable plugin scanning.",
+  "version": "0.1.0"
+}
