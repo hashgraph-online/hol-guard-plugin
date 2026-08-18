@@ -1,0 +1,32 @@
+schema_version: "1.0"
+
+extension:
+  id: "hol-guard"
+  name: "HOL Guard"
+  version: "0.2.0"
+  description: "Local-first security checks for Spec Kit agent workflows"
+  author: "Hashgraph Online"
+  repository: "https://github.com/hashgraph-online/hol-guard-plugin"
+  license: "Apache-2.0"
+  homepage: "https://hol.org/guard"
+
+requires:
+  speckit_version: ">=0.1.0"
+  tools:
+    - name: "hol-guard"
+      required: true
+
+provides:
+  commands:
+    - name: "speckit.hol-guard.protect"
+      file: "commands/protect.md"
+      description: "Enable HOL Guard protection for the active agent workspace"
+    - name: "speckit.hol-guard.scan"
+      file: "commands/scan.md"
+      description: "Scan agent extensions and tooling before trusting them"
+
+tags:
+  - "security"
+  - "ai-agents"
+  - "supply-chain"
+  - "mcp"
