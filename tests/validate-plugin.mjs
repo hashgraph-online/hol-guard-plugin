@@ -32,6 +32,9 @@ await exists('skills/hol-guard/SKILL.md');
 await exists('assets/icon.png');
 await exists('assets/logo.svg');
 await exists('scripts/hol-guard-plugin');
+await exists('index.js');
+await exists('cordis.patch.yml');
+await exists('dsh.plugin.json');
 
 const skill = await readFile(path.join(root, 'skills/hol-guard/SKILL.md'), 'utf8');
 assert(skill.includes('Never read `.env` files.'), 'skill must include env safety rule');
@@ -49,15 +52,20 @@ assert(
   'README must link source Guard repo',
 );
 assert(readme.includes('npm test'), 'README must document validation');
+assert(readme.includes('npm run test:dsh-e2e'), 'README must document the DSH end-to-end test');
 assert(readme.includes('bash scripts/hol-guard-plugin protect claude-code'), 'README must show Claude helper command');
+assert(readme.includes('bash scripts/hol-guard-plugin protect dsh'), 'README must show DSH helper command');
+assert(readme.includes('dsh plugin --profile headless add'), 'README must document native DSH installation');
 
 const helper = await readFile(path.join(root, 'scripts/hol-guard-plugin'), 'utf8');
 assert(helper.includes('normalize_harness'), 'helper must normalize harness aliases');
 assert(helper.includes('claude|claude_code|claude-code'), 'helper must accept Claude aliases');
+assert(helper.includes('dsh|deepseek-harness|deepseek_harness'), 'helper must accept DSH aliases');
 assert(helper.includes('normalize_scan_system'), 'helper must normalize scanner system aliases');
 assert(helper.includes('claude|claude-code|claude_code'), 'helper must accept Claude scanner aliases');
 assert(helper.includes('scan-system'), 'helper must support system-specific scan guidance');
-// Validate .mcp.json — load forbidden patterns from data file to avoid scanner false positives
+
+// Validate .mcp.json. Load forbidden patterns from data to avoid scanner false positives.
 await exists('.mcp.json');
 const mcpConfig = JSON.parse(await readFile(path.join(root, '.mcp.json'), 'utf8'));
 assert(mcpConfig.mcpServers, '.mcp.json must have mcpServers');
