@@ -29,12 +29,6 @@ jobs:
       - name: Validate manifests, assets, and DSH gate
         run: npm test
 
-      - name: Install DSH sandbox backend
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes bubblewrap
-          bwrap --version
-
       - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
@@ -43,6 +37,11 @@ jobs:
           npm install --global pnpm@11.17.0
           git clone --filter=blob:none https://github.com/deepseek-ai/deepseek-harness.git "$DSH_SOURCE"
           git -C "$DSH_SOURCE" checkout --detach "$DSH_COMMIT"
+          # Use the pinned DSH revision's own CI bootstrap so the sandbox
+          # functional probe matches the runtime being exercised. The helper
+          # verifies the signed bubblewrap archive, configures hosted-runner
+          # user namespaces when required, and proves the exact bwrap profile.
+          bash "$DSH_SOURCE/scripts/prepare-ci-bubblewrap.sh"
           pnpm --dir "$DSH_SOURCE" install --frozen-lockfile
           pnpm --dir "$DSH_SOURCE" run build:lib
 
