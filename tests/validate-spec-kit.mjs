@@ -12,11 +12,27 @@ async function exists(relativePath) {
   await access(path.join(root, relativePath));
 }
 
-const manifest = await readFile(path.join(root, 'extension.yml'), 'utf8');
+const [manifest, packageSource] = await Promise.all([
+  readFile(path.join(root, 'extension.yml'), 'utf8'),
+  readFile(path.join(root, 'package.json'), 'utf8'),
+]);
+const packageJson = JSON.parse(packageSource);
 
 assert(manifest.includes('schema_version: "1.0"'), 'Spec Kit schema version must be 1.0');
 assert(manifest.includes('id: "hol-guard"'), 'Spec Kit extension id must be hol-guard');
-assert(manifest.includes('version: "0.2.0"'), 'Spec Kit extension version must be 0.2.0');
+
+const versionMatch = manifest.match(/^\s{2}version:\s*"([^"]+)"\s*$/m);
+assert(versionMatch, 'Spec Kit extension version must be declared');
+const extensionVersion = versionMatch[1];
+assert(
+  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(extensionVersion),
+  `Spec Kit extension version must be semver, got ${extensionVersion}`,
+);
+assert(
+  extensionVersion === packageJson.version,
+  `Spec Kit extension version (${extensionVersion}) must match package.json version (${packageJson.version})`,
+);
+
 assert(manifest.includes('repository: "https://github.com/hashgraph-online/hol-guard-plugin"'), 'Spec Kit repository mismatch');
 assert(manifest.includes('license: "Apache-2.0"'), 'Spec Kit license must be Apache-2.0');
 assert(manifest.includes('speckit_version: ">=0.1.0"'), 'Spec Kit minimum version must be declared');
@@ -38,4 +54,4 @@ assert(scan.includes('plugin-scanner lint'), 'scan command must include the read
 assert(scan.includes('plugin-scanner verify'), 'scan command must include the stronger verification path');
 assert(scan.includes('Never run the target repository'), 'scan command must forbid executing untrusted target setup');
 
-console.log('Spec Kit extension validation passed.');
+console.log(`Spec Kit extension validation passed for version ${extensionVersion}.`);
