@@ -26,10 +26,12 @@ async function walk(directory, relative = '') {
   return files;
 }
 
+const readmePath = path.join(payloadRoot, 'README.md');
 const manifestPath = path.join(payloadRoot, '.claude-plugin', 'plugin.json');
 const holGuardSkillPath = path.join(payloadRoot, 'skills', 'hol-guard', 'SKILL.md');
 const scannerSkillPath = path.join(payloadRoot, 'skills', 'plugin-scanner', 'SKILL.md');
 
+const payloadReadme = await readFile(readmePath, 'utf8');
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const holGuardSkill = await readFile(holGuardSkillPath, 'utf8');
 const scannerSkill = await readFile(scannerSkillPath, 'utf8');
@@ -49,6 +51,21 @@ for (const [name, skill] of [
   assert(skill.includes('pipx install hol-guard'), `${name} skill must use the isolated pipx install path`);
   assert(skill.toLowerCase().includes('local'), `${name} skill must explicitly describe local execution`);
 }
+
+const runtimePinSurfaces = [
+  ['README.md', payloadReadme],
+  ['skills/hol-guard/SKILL.md', holGuardSkill],
+  ['skills/plugin-scanner/SKILL.md', scannerSkill],
+];
+const runtimeVersions = [];
+for (const [name, text] of runtimePinSurfaces) {
+  const installCommands = text.match(/\bpipx install hol-guard[^\s`]*/g) ?? [];
+  assert(installCommands.length === 1, `${name} must contain exactly one HOL Guard install command`);
+  const exactPin = /^pipx install hol-guard==(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(installCommands[0]);
+  assert(exactPin, `${name} must pin HOL Guard to one exact stable X.Y.Z release`);
+  runtimeVersions.push(exactPin.slice(1).join('.'));
+}
+assert(new Set(runtimeVersions).size === 1, `HOL Guard runtime pins must match across review assets: ${runtimeVersions.join(', ')}`);
 
 const forbiddenPaths = [
   '.mcp.json',
@@ -92,4 +109,4 @@ assert(
   'scanner must retain the no-execution safety rule',
 );
 
-console.log('wshobson/agents HOL Guard payload validation passed.');
+console.log(`wshobson/agents HOL Guard payload validation passed with runtime ${runtimeVersions[0]}.`);
