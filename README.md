@@ -176,3 +176,6 @@ No provider key is required for the end-to-end test.
 - Guard and scanner source: https://github.com/hashgraph-online/hol-guard
 - DeepSeek Harness source: https://github.com/deepseek-ai/deepseek-harness
 - HOL Guard product: https://hol.org/guard
+- Plugin security dataset: https://huggingface.co/datasets/HashgraphOnline/hol-plugin-security
+
+Snapshot of catalog scores (~205 scored plugins), modeled Guard runtime fixtures, and public advisories. Scan ≠ safety guarantee. Catalog plugin count is not the Registry Broker agent catalog. HOL publishes it; not independent validation. Do not attribute Hashgraph Online's org-wide GitHub stars to this plugin repository.
