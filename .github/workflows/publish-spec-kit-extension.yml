@@ -1,33 +1,53 @@
-name: Publish Spec Kit Extension
+name: Verify Spec Kit Release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - extension.yml
-      - commands/**
-      - README.md
-      - LICENSE
-      - .github/workflows/publish-spec-kit-extension.yml
+  workflow_run:
+    workflows:
+      - Publish Agent Skills
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: publish-spec-kit-extension
+  group: verify-spec-kit-release
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Validate, tag, and verify release archive
+  verify:
+    name: Verify released Spec Kit extension
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Resolve source commit
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            sha="${GITHUB_SHA}"
+          fi
+          if [[ -z "$sha" ]]; then
+            echo "Unable to resolve the exact main commit to verify." >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact released source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -38,100 +58,71 @@ jobs:
       - name: Install repository dependencies
         run: npm ci
 
-      - name: Validate Spec Kit package
+      - name: Validate Spec Kit package and shared version
         run: node tests/validate-spec-kit.mjs
 
       - name: Install pinned Spec Kit CLI
+        shell: bash
         run: |
+          set -euo pipefail
           python3 -m pip install --user --disable-pip-version-check \
             "git+https://github.com/github/spec-kit.git@ead30d9cfb99c07b3073afa73e7b40a64015f17f"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Publish and smoke-test release archive
+      - name: Verify shared release owns the exact Spec Kit package
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
 
-          VERSION="$(node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const source = fs.readFileSync('extension.yml', 'utf8');
-          const match = source.match(/^  version:\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$/m);
-          if (!match) process.exit(2);
-          process.stdout.write(match[1]);
-          NODE
-          )"
-          PACKAGE_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
-          if [[ "$VERSION" != "$PACKAGE_VERSION" ]]; then
-            echo "extension.yml version ($VERSION) must match package.json version ($PACKAGE_VERSION)" >&2
+          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          TAG="v${VERSION}"
+          PACKAGE_PATHS=(extension.yml commands README.md LICENSE)
+
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Expected shared Agent Skills release $TAG does not exist yet." >&2
             exit 1
           fi
 
-          TAG="v${VERSION}"
-          PACKAGE_PATHS=(extension.yml commands README.md LICENSE)
-          CURRENT_PACKAGE_DIGEST="$(git ls-tree -r "$GITHUB_SHA" -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
-
-          resolve_tag_commit() {
-            local tag="$1"
-            local type sha
-            type="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object.type')"
-            sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object.sha')"
-            if [[ "$type" == "tag" ]]; then
-              sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq '.object.sha')"
-            fi
-            printf '%s' "$sha"
-          }
-
-          smoke_test_archive() {
-            local archive_url="$1"
-            local workdir
-            workdir="$(mktemp -d)"
-            (
-              cd "$workdir"
-              specify init --here --force --non-interactive --ignore-agent-tools
-              specify extension add hol-guard --from "$archive_url"
-              specify extension list | tee installed-extensions.txt
-              grep -F "hol-guard" installed-extensions.txt
-            )
-            rm -rf "$workdir"
-          }
-
-          # Prove the exact current source snapshot installs before creating a tag.
-          smoke_test_archive "https://github.com/${GITHUB_REPOSITORY}/archive/${GITHUB_SHA}.zip"
-
-          CREATED_TAG=false
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
-            TAG_COMMIT="$(resolve_tag_commit "$TAG")"
-            TAG_PACKAGE_DIGEST="$(git ls-tree -r "$TAG_COMMIT" -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
-            if [[ "$TAG_PACKAGE_DIGEST" != "$CURRENT_PACKAGE_DIGEST" ]]; then
-              echo "$TAG already exists with different Spec Kit package contents; bump extension.yml/package.json before publishing." >&2
-              exit 1
-            fi
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag "$TAG" "$GITHUB_SHA"
-            git push origin "refs/tags/${TAG}"
-            CREATED_TAG=true
+          git fetch --force --tags origin
+          TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+          if [[ -z "$TAG_COMMIT" ]]; then
+            echo "Unable to resolve commit for $TAG." >&2
+            exit 1
           fi
 
-          cleanup_tag_on_failure() {
-            if [[ "$CREATED_TAG" == "true" ]]; then
-              git push origin ":refs/tags/${TAG}" || true
-            fi
-          }
-          trap cleanup_tag_on_failure ERR
+          CURRENT_PACKAGE_DIGEST="$(git ls-tree -r "${{ steps.source.outputs.sha }}" -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
+          TAG_PACKAGE_DIGEST="$(git ls-tree -r "$TAG_COMMIT" -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
+          if [[ "$TAG_PACKAGE_DIGEST" != "$CURRENT_PACKAGE_DIGEST" ]]; then
+            echo "$TAG exists but does not contain the current Spec Kit package. Bump package.json and extension.yml together before publishing." >&2
+            exit 1
+          fi
 
           ARCHIVE_URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.zip"
-          smoke_test_archive "$ARCHIVE_URL"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "archive_url=$ARCHIVE_URL" >> "$GITHUB_OUTPUT"
 
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --verify-tag \
-              --title "HOL Guard Spec Kit extension ${VERSION}" \
-              --notes "Release archive for the HOL Guard Spec Kit extension. Validated by tests/validate-spec-kit.mjs and installed from the exact tag archive with specify extension add."
-          fi
+      - name: Smoke-test exact release archive
+        env:
+          ARCHIVE_URL: ${{ steps.release.outputs.archive_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+          cd "$workdir"
 
-          gh release view "$TAG" --json tagName,url --jq '.tagName + " " + .url'
-          trap - ERR
+          specify init --here --force --non-interactive --ignore-agent-tools
+          specify extension add hol-guard --from "$ARCHIVE_URL"
+          specify extension list | tee installed-extensions.txt
+          grep -F "hol-guard" installed-extensions.txt
+
+      - name: Report verified release
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          ARCHIVE_URL: ${{ steps.release.outputs.archive_url }}
+        run: |
+          echo "Verified HOL Guard Spec Kit extension release $TAG"
+          echo "Archive: $ARCHIVE_URL"
