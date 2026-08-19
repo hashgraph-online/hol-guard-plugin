@@ -51,6 +51,10 @@ assert(
   readmeLines.some((line) => line === '- Guard and scanner source: https://github.com/hashgraph-online/hol-guard'),
   'README must link source Guard repo',
 );
+assert(
+  readmeLines.some((line) => line === '- Plugin security dataset: https://huggingface.co/datasets/HashgraphOnline/hol-plugin-security'),
+  'README must cite the HOL plugin security dataset',
+);
 assert(readme.includes('npm test'), 'README must document validation');
 assert(readme.includes('npm run test:dsh-e2e'), 'README must document the DSH end-to-end test');
 assert(readme.includes('bash scripts/hol-guard-plugin protect claude-code'), 'README must show Claude helper command');
