@@ -51,16 +51,15 @@ jobs:
         run: npm run sync:hol-guard-runtime -- --check
 
   sync-runtime:
-    name: Sync published HOL Guard runtime
-    if: github.event_name != 'pull_request'
+    name: Exercise or sync published HOL Guard runtime
     needs: verify-updater
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout main
+      - name: Checkout sync target
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -143,7 +142,6 @@ jobs:
           fi
 
       - name: Install and verify published runtime
-        if: steps.update.outputs.changed == 'true'
         env:
           HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
         run: |
@@ -164,15 +162,26 @@ jobs:
           PY
 
       - name: Validate updated plugin payload
-        if: steps.update.outputs.changed == 'true'
         env:
           HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
         run: |
           npm test
           npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
 
+      - name: Require pull requests to contain the current pin
+        if: github.event_name == 'pull_request' && steps.update.outputs.changed == 'true'
+        env:
+          HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
+        run: |
+          echo "::error::HOL Guard review payload pins must be committed at ${HOL_GUARD_VERSION}."
+          git diff -- \
+            distributions/wshobson-agents/README.md \
+            distributions/wshobson-agents/skills/hol-guard/SKILL.md \
+            distributions/wshobson-agents/skills/plugin-scanner/SKILL.md
+          exit 1
+
       - name: Commit runtime update
-        if: steps.update.outputs.changed == 'true'
+        if: github.event_name != 'pull_request' && steps.update.outputs.changed == 'true'
         env:
           HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
         run: |
