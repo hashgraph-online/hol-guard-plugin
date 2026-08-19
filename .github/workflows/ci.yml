@@ -29,6 +29,12 @@ jobs:
       - name: Validate manifests, assets, and DSH gate
         run: npm test
 
+      - name: Install DSH sandbox backend
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+          bwrap --version
+
       - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
