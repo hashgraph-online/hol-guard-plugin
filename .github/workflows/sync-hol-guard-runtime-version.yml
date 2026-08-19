@@ -20,7 +20,7 @@ on:
     - cron: "17 */6 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: hol-guard-runtime-version-sync
@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -52,14 +54,17 @@ jobs:
 
   sync-runtime:
     name: Exercise or sync published HOL Guard runtime
+    if: github.event_name != 'pull_request'
     needs: verify-updater
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - name: Checkout sync target
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
+          ref: main
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -168,34 +173,35 @@ jobs:
           npm test
           npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
 
-      - name: Require pull requests to contain the current pin
-        if: github.event_name == 'pull_request' && steps.update.outputs.changed == 'true'
-        env:
-          HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
-        run: |
-          echo "::error::HOL Guard review payload pins must be committed at ${HOL_GUARD_VERSION}."
-          git diff -- \
-            distributions/wshobson-agents/README.md \
-            distributions/wshobson-agents/skills/hol-guard/SKILL.md \
-            distributions/wshobson-agents/skills/plugin-scanner/SKILL.md
-          exit 1
-
       - name: Commit runtime update
-        if: github.event_name != 'pull_request' && steps.update.outputs.changed == 'true'
+        if: steps.update.outputs.changed == 'true'
         env:
           HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            distributions/wshobson-agents/README.md \
-            distributions/wshobson-agents/skills/hol-guard/SKILL.md \
-            distributions/wshobson-agents/skills/plugin-scanner/SKILL.md
-          git commit -m "chore(wshobson): sync HOL Guard runtime ${HOL_GUARD_VERSION}"
 
           for attempt in 1 2 3; do
             git fetch origin main
-            git rebase origin/main
+            git reset --hard origin/main
+            npm run sync:hol-guard-runtime -- --version "$HOL_GUARD_VERSION"
+
+            if git diff --quiet -- \
+              distributions/wshobson-agents/README.md \
+              distributions/wshobson-agents/skills/hol-guard/SKILL.md \
+              distributions/wshobson-agents/skills/plugin-scanner/SKILL.md; then
+              echo "HOL Guard runtime pins are already current on main."
+              exit 0
+            fi
+
+            npm test
+            npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
+            git add \
+              distributions/wshobson-agents/README.md \
+              distributions/wshobson-agents/skills/hol-guard/SKILL.md \
+              distributions/wshobson-agents/skills/plugin-scanner/SKILL.md
+            git commit -m "chore(wshobson): sync HOL Guard runtime ${HOL_GUARD_VERSION}"
+
             if git push origin HEAD:main; then
               exit 0
             fi
