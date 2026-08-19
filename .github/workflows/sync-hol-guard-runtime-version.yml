@@ -6,6 +6,7 @@ on:
       - ".github/workflows/sync-hol-guard-runtime-version.yml"
       - "scripts/sync-hol-guard-runtime-version.mjs"
       - "tests/sync-hol-guard-runtime-version.test.mjs"
+      - "tests/validate-wshobson-agents.mjs"
       - "package.json"
       - "distributions/wshobson-agents/**"
   repository_dispatch:
@@ -30,9 +31,11 @@ jobs:
   verify-updater:
     name: Verify runtime pin updater
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.runtime.outputs.version }}
     steps:
-      - name: Checkout
+      - name: Checkout untrusted validation target
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -48,33 +51,6 @@ jobs:
 
       - name: Test runtime pin updater
         run: npm run test:runtime-sync
-
-      - name: Verify repository runtime pins
-        run: npm run sync:hol-guard-runtime -- --check
-
-  sync-runtime:
-    name: Exercise or sync published HOL Guard runtime
-    if: github.event_name != 'pull_request'
-    needs: verify-updater
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout sync target
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-          cache: npm
-
-      - name: Install Node dependencies
-        run: npm ci
 
       - name: Resolve published stable version
         id: runtime
@@ -131,21 +107,6 @@ jobs:
           print(f"Resolved hol-guard=={version}")
           PY
 
-      - name: Update runtime pins
-        id: update
-        env:
-          HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
-        run: |
-          npm run sync:hol-guard-runtime -- --version "$HOL_GUARD_VERSION"
-          if git diff --quiet -- \
-            distributions/wshobson-agents/README.md \
-            distributions/wshobson-agents/skills/hol-guard/SKILL.md \
-            distributions/wshobson-agents/skills/plugin-scanner/SKILL.md; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install and verify published runtime
         env:
           HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
@@ -166,17 +127,41 @@ jobs:
           print(f"Installed hol-guard=={installed} from PyPI successfully")
           PY
 
-      - name: Validate updated plugin payload
-        env:
-          HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
-        run: |
-          npm test
-          npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
+      - name: Validate review payload
+        run: npm test
 
-      - name: Commit runtime update
-        if: steps.update.outputs.changed == 'true'
+      - name: Require the current published runtime pin
         env:
           HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
+        run: npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
+
+  sync-runtime:
+    name: Sync published HOL Guard runtime from trusted main
+    needs: verify-updater
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Regenerate, validate, and publish runtime pin
+        env:
+          HOL_GUARD_VERSION: ${{ needs.verify-updater.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -184,18 +169,19 @@ jobs:
           for attempt in 1 2 3; do
             git fetch origin main
             git reset --hard origin/main
+
             npm run sync:hol-guard-runtime -- --version "$HOL_GUARD_VERSION"
+            npm test
+            npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
 
             if git diff --quiet -- \
               distributions/wshobson-agents/README.md \
               distributions/wshobson-agents/skills/hol-guard/SKILL.md \
               distributions/wshobson-agents/skills/plugin-scanner/SKILL.md; then
-              echo "HOL Guard runtime pins are already current on main."
+              echo "HOL Guard runtime pins are already current."
               exit 0
             fi
 
-            npm test
-            npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
             git add \
               distributions/wshobson-agents/README.md \
               distributions/wshobson-agents/skills/hol-guard/SKILL.md \
@@ -205,14 +191,16 @@ jobs:
             if git push origin HEAD:main; then
               exit 0
             fi
+
             if [ "$attempt" -eq 3 ]; then
               echo "Could not push HOL Guard runtime update after ${attempt} attempts." >&2
               exit 1
             fi
+            echo "Main changed before push; regenerating from the latest trusted main (${attempt}/3)."
             sleep 5
           done
 
       - name: Verify final runtime pin
         env:
-          HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
+          HOL_GUARD_VERSION: ${{ needs.verify-updater.outputs.version }}
         run: npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
