@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,8 +11,9 @@ export const RUNTIME_PIN_TARGETS = Object.freeze([
   'distributions/wshobson-agents/skills/plugin-scanner/SKILL.md',
 ]);
 
-const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?![\s\S])/;
 const INSTALL_COMMAND_PATTERN = /\bpipx install hol-guard(?:==([^\s`'"\\]+))?(?=$|[\s`'"])/gm;
+const DEFAULT_FILE_OPERATIONS = Object.freeze({ rename, rm, writeFile });
 
 export function validateStableVersion(version) {
   if (typeof version !== 'string' || !STABLE_VERSION_PATTERN.test(version)) {
@@ -63,10 +65,76 @@ export async function inspectHolGuardRuntimePins(root = process.cwd()) {
   };
 }
 
+async function removeIfPresent(fileOperations, filePath) {
+  try {
+    await fileOperations.rm(filePath, { force: true });
+  } catch {
+    // Cleanup is best-effort. The primary write or rollback error remains authoritative.
+  }
+}
+
+async function writePinTransaction(updates, fileOperations) {
+  if (updates.length === 0) {
+    return;
+  }
+
+  const transactionId = `${process.pid}-${randomUUID()}`;
+  const prepared = updates.map((update) => ({
+    ...update,
+    temporaryPath: `${update.absolutePath}.${transactionId}.tmp`,
+    rollbackPath: `${update.absolutePath}.${transactionId}.rollback`,
+  }));
+
+  try {
+    for (const update of prepared) {
+      await fileOperations.writeFile(update.temporaryPath, update.updatedContent, {
+        encoding: 'utf8',
+        flag: 'wx',
+      });
+    }
+  } catch (error) {
+    await Promise.all(prepared.map((update) => removeIfPresent(fileOperations, update.temporaryPath)));
+    throw error;
+  }
+
+  const committed = [];
+  try {
+    for (const update of prepared) {
+      await fileOperations.rename(update.temporaryPath, update.absolutePath);
+      committed.push(update);
+    }
+  } catch (error) {
+    const rollbackErrors = [];
+    for (const update of committed.reverse()) {
+      try {
+        await fileOperations.writeFile(update.rollbackPath, update.originalContent, {
+          encoding: 'utf8',
+          flag: 'wx',
+        });
+        await fileOperations.rename(update.rollbackPath, update.absolutePath);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      } finally {
+        await removeIfPresent(fileOperations, update.rollbackPath);
+      }
+    }
+    await Promise.all(prepared.map((update) => removeIfPresent(fileOperations, update.temporaryPath)));
+
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        'HOL Guard runtime pin update failed and one or more files could not be restored',
+      );
+    }
+    throw error;
+  }
+}
+
 export async function syncHolGuardRuntimeVersion({
   root = process.cwd(),
   version,
   check = false,
+  fileOperations = DEFAULT_FILE_OPERATIONS,
 } = {}) {
   const inspected = await inspectHolGuardRuntimePins(root);
   const requestedVersion = version === undefined ? undefined : validateStableVersion(version);
@@ -87,22 +155,22 @@ export async function syncHolGuardRuntimeVersion({
     throw new Error('--version X.Y.Z is required unless --check is used');
   }
 
-  const changedFiles = [];
-  for (const target of inspected.targets) {
-    if (target.version === targetVersion) {
-      continue;
-    }
+  const replacement = `pipx install hol-guard==${targetVersion}`;
+  const updates = inspected.targets
+    .filter((target) => target.version !== targetVersion)
+    .map((target) => ({
+      relativePath: target.relativePath,
+      absolutePath: target.absolutePath,
+      originalContent: target.content,
+      updatedContent: `${target.content.slice(0, target.commandIndex)}${replacement}${target.content.slice(target.commandIndex + target.command.length)}`,
+    }));
 
-    const replacement = `pipx install hol-guard==${targetVersion}`;
-    const updated = `${target.content.slice(0, target.commandIndex)}${replacement}${target.content.slice(target.commandIndex + target.command.length)}`;
-    await writeFile(target.absolutePath, updated, 'utf8');
-    changedFiles.push(target.relativePath);
-  }
+  await writePinTransaction(updates, fileOperations);
 
   return {
     previousVersion: inspected.version,
     version: targetVersion,
-    changedFiles,
+    changedFiles: updates.map((update) => update.relativePath),
   };
 }
 
