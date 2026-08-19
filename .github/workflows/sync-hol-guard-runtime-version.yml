@@ -1,0 +1,206 @@
+name: Sync HOL Guard Runtime Version
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/sync-hol-guard-runtime-version.yml"
+      - "scripts/sync-hol-guard-runtime-version.mjs"
+      - "tests/sync-hol-guard-runtime-version.test.mjs"
+      - "tests/validate-wshobson-agents.mjs"
+      - "package.json"
+      - "distributions/wshobson-agents/**"
+  repository_dispatch:
+    types: [hol-guard-published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact stable HOL Guard version to pin (defaults to latest stable PyPI release)"
+        required: false
+        type: string
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hol-guard-runtime-version-sync
+  cancel-in-progress: false
+
+jobs:
+  verify-updater:
+    name: Verify runtime pin updater
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.runtime.outputs.version }}
+    steps:
+      - name: Checkout untrusted validation target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Test runtime pin updater
+        run: npm run test:runtime-sync
+
+      - name: Resolve published stable version
+        id: runtime
+        env:
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import time
+          import urllib.request
+
+          stable = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+          requested = (os.environ.get("DISPATCH_VERSION") or os.environ.get("INPUT_VERSION") or "").strip()
+          if requested and not stable.fullmatch(requested):
+              raise SystemExit(f"Requested HOL Guard version is not an exact stable X.Y.Z release: {requested!r}")
+
+          last_error = None
+          version = None
+          for attempt in range(1, 11):
+              try:
+                  with urllib.request.urlopen("https://pypi.org/pypi/hol-guard/json", timeout=30) as response:
+                      payload = json.load(response)
+
+                  releases = payload.get("releases", {})
+                  if requested:
+                      files = releases.get(requested, [])
+                      if not files or not any(not file.get("yanked", False) for file in files):
+                          raise RuntimeError(f"hol-guard=={requested} is not available as a non-yanked PyPI release")
+                      version = requested
+                  else:
+                      candidates = []
+                      for candidate, files in releases.items():
+                          if stable.fullmatch(candidate) and any(not file.get("yanked", False) for file in files):
+                              candidates.append((tuple(int(part) for part in candidate.split(".")), candidate))
+                      if not candidates:
+                          raise RuntimeError("PyPI did not return any non-yanked stable hol-guard releases")
+                      version = max(candidates)[1]
+                  break
+              except Exception as error:
+                  last_error = error
+                  if attempt == 10:
+                      break
+                  print(f"Could not resolve HOL Guard release yet ({attempt}/10): {error}")
+                  time.sleep(15)
+
+          if version is None:
+              raise SystemExit(f"Could not resolve a published HOL Guard version: {last_error}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"version={version}", file=output)
+          print(f"Resolved hol-guard=={version}")
+          PY
+
+      - name: Install and verify published runtime
+        env:
+          HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/hol-guard-runtime"
+          "${RUNNER_TEMP}/hol-guard-runtime/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            "hol-guard==${HOL_GUARD_VERSION}"
+          "${RUNNER_TEMP}/hol-guard-runtime/bin/python" - <<'PY'
+          import importlib.metadata
+          import os
+
+          expected = os.environ["HOL_GUARD_VERSION"]
+          installed = importlib.metadata.version("hol-guard")
+          if installed != expected:
+              raise SystemExit(f"Installed hol-guard metadata is {installed}, expected {expected}")
+          print(f"Installed hol-guard=={installed} from PyPI successfully")
+          PY
+
+      - name: Validate review payload
+        run: npm test
+
+      - name: Require the current published runtime pin
+        env:
+          HOL_GUARD_VERSION: ${{ steps.runtime.outputs.version }}
+        run: npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
+
+  sync-runtime:
+    name: Sync published HOL Guard runtime from trusted main
+    needs: verify-updater
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Regenerate, validate, and publish runtime pin
+        env:
+          HOL_GUARD_VERSION: ${{ needs.verify-updater.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+
+            npm run sync:hol-guard-runtime -- --version "$HOL_GUARD_VERSION"
+            npm test
+            npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"
+
+            if git diff --quiet -- \
+              distributions/wshobson-agents/README.md \
+              distributions/wshobson-agents/skills/hol-guard/SKILL.md \
+              distributions/wshobson-agents/skills/plugin-scanner/SKILL.md; then
+              echo "HOL Guard runtime pins are already current."
+              exit 0
+            fi
+
+            git add \
+              distributions/wshobson-agents/README.md \
+              distributions/wshobson-agents/skills/hol-guard/SKILL.md \
+              distributions/wshobson-agents/skills/plugin-scanner/SKILL.md
+            git commit -m "chore(wshobson): sync HOL Guard runtime ${HOL_GUARD_VERSION}"
+
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Could not push HOL Guard runtime update after ${attempt} attempts." >&2
+              exit 1
+            fi
+            echo "Main changed before push; regenerating from the latest trusted main (${attempt}/3)."
+            sleep 5
+          done
+
+      - name: Verify final runtime pin
+        env:
+          HOL_GUARD_VERSION: ${{ needs.verify-updater.outputs.version }}
+        run: npm run sync:hol-guard-runtime -- --check --version "$HOL_GUARD_VERSION"

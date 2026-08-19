@@ -37,21 +37,90 @@ jobs:
           npm install --global pnpm@11.17.0
           git clone --filter=blob:none https://github.com/deepseek-ai/deepseek-harness.git "$DSH_SOURCE"
           git -C "$DSH_SOURCE" checkout --detach "$DSH_COMMIT"
+          # Use the pinned DSH revision's own CI bootstrap so the sandbox
+          # functional probe matches the runtime being exercised. The helper
+          # verifies the signed bubblewrap archive, configures hosted-runner
+          # user namespaces when required, and proves the exact bwrap profile.
+          bash "$DSH_SOURCE/scripts/prepare-ci-bubblewrap.sh"
           pnpm --dir "$DSH_SOURCE" install --frozen-lockfile
           pnpm --dir "$DSH_SOURCE" run build:lib
 
       - name: Run real DSH headless integration
         env:
           DSH_SOURCE: ${{ runner.temp }}/deepseek-harness
-        run: npm run test:dsh-e2e
+        run: |
+          set -o pipefail
+          npm run test:dsh-e2e 2>&1 | tee "${RUNNER_TEMP}/dsh-e2e.log"
+
+      - name: Upload DSH E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dsh-e2e-diagnostics
+          path: ${{ runner.temp }}/dsh-e2e.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Install Codex Plugin Scanner
         run: python3 -m pip install --user "codex-plugin-scanner[cisco]==2.0.12"
 
       - name: Scan plugin package
         run: |
+          set -o pipefail
+          # Keep the full repository score/severity gate, but do not let the
+          # MCP-specific analyzer classify unrelated DSH/maintenance source as
+          # MCP implementation code. The declared MCP surface is checked below
+          # with the same blocking medium-severity threshold.
           codex-plugin-scanner scan . \
             --format json \
             --cisco-skill-scan auto \
+            --cisco-mcp-scan off \
             --min-score 95 \
-            --fail-on-severity medium
+            --fail-on-severity medium \
+            2>&1 | tee "${RUNNER_TEMP}/plugin-scan.log"
+
+          MCP_SCAN_ROOT="${RUNNER_TEMP}/hol-guard-mcp-scan"
+          mkdir -p "$MCP_SCAN_ROOT"
+          cp .mcp.json "$MCP_SCAN_ROOT/.mcp.json"
+
+          python3 - "$MCP_SCAN_ROOT" <<'PY' 2>&1 | tee -a "${RUNNER_TEMP}/plugin-scan.log"
+          import sys
+          from pathlib import Path
+
+          from codex_plugin_scanner.integrations.cisco_mcp_scanner import run_cisco_mcp_scan
+          from codex_plugin_scanner.integrations.cisco_skill_scanner import CiscoIntegrationStatus
+          from codex_plugin_scanner.models import SEVERITY_ORDER, Severity
+
+          scan_root = Path(sys.argv[1])
+          summary = run_cisco_mcp_scan(scan_root, mode="on")
+          print(summary.message)
+          for finding in summary.findings:
+              print(f"{finding.severity.value}: {finding.rule_id}: {finding.file_path}: {finding.title}")
+
+          if summary.status != CiscoIntegrationStatus.ENABLED:
+              raise SystemExit(f"Dedicated Cisco MCP scan did not run successfully: {summary.status.value}: {summary.message}")
+          if summary.targets_scanned < 1:
+              raise SystemExit("Dedicated Cisco MCP scan did not analyze the declared .mcp.json surface")
+
+          threshold = SEVERITY_ORDER[Severity.MEDIUM]
+          blocking = [
+              finding
+              for finding in summary.findings
+              if SEVERITY_ORDER[finding.severity] >= threshold
+          ]
+          if blocking:
+              details = "; ".join(
+                  f"{finding.severity.value}:{finding.rule_id}:{finding.file_path}"
+                  for finding in blocking
+              )
+              raise SystemExit(f"Dedicated Cisco MCP scan found blocking findings: {details}")
+          PY
+
+      - name: Upload plugin scan diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plugin-scan-diagnostics
+          path: ${{ runner.temp }}/plugin-scan.log
+          if-no-files-found: error
+          retention-days: 3
