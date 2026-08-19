@@ -232,7 +232,10 @@ async function runScenario({ protectedByGuard }) {
       assert.match(`${dumped.stdout}\n${dumped.stderr}`, /hol-guard/);
     }
 
-    const result = await runDsh(['--profile', 'headless', '--prompt', 'Write the integration sentinel with bash.'], {
+    // The pinned DSH headless startup accepts the task as a positional argument.
+    // Keep this aligned with the pinned runtime rather than inventing an unsupported
+    // launcher flag, so failures below represent real integration behavior.
+    const result = await runDsh(['--profile', 'headless', 'Write the integration sentinel with bash.'], {
       env,
       cwd: workspace,
     });
@@ -242,7 +245,10 @@ async function runScenario({ protectedByGuard }) {
       result.code === 0 || /HOL Guard DSH end-to-end policy denial/.test(combined),
       `DSH ${scenario} run failed before policy enforcement:\n${combined}`,
     );
-    assert.ok(provider.requests.length >= 1, `DSH ${scenario} run never reached the mock inference endpoint`);
+    assert.ok(
+      provider.requests.length >= 1,
+      `DSH ${scenario} run never reached the mock inference endpoint:\n${combined}`,
+    );
 
     let sentinelExists = true;
     try {
