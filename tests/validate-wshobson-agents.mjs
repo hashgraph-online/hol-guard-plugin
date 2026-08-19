@@ -2,6 +2,8 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { inspectHolGuardRuntimePins } from '../scripts/sync-hol-guard-runtime-version.mjs';
+
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const payloadRoot = path.join(root, 'distributions', 'wshobson-agents');
 
@@ -36,6 +38,7 @@ const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const holGuardSkill = await readFile(holGuardSkillPath, 'utf8');
 const scannerSkill = await readFile(scannerSkillPath, 'utf8');
 const files = await walk(payloadRoot);
+const runtimePins = await inspectHolGuardRuntimePins(root);
 
 assert(manifest.name === 'hol-guard', 'wshobson payload plugin name must be hol-guard');
 assert(manifest.license === 'Apache-2.0', 'wshobson payload must declare Apache-2.0');
@@ -52,20 +55,14 @@ for (const [name, skill] of [
   assert(skill.toLowerCase().includes('local'), `${name} skill must explicitly describe local execution`);
 }
 
-const runtimePinSurfaces = [
-  ['README.md', payloadReadme],
-  ['skills/hol-guard/SKILL.md', holGuardSkill],
-  ['skills/plugin-scanner/SKILL.md', scannerSkill],
-];
-const runtimeVersions = [];
-for (const [name, text] of runtimePinSurfaces) {
-  const installCommands = text.match(/\bpipx install hol-guard[^\s`]*/g) ?? [];
-  assert(installCommands.length === 1, `${name} must contain exactly one HOL Guard install command`);
-  const exactPin = /^pipx install hol-guard==(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(installCommands[0]);
-  assert(exactPin, `${name} must pin HOL Guard to one exact stable X.Y.Z release`);
-  runtimeVersions.push(exactPin.slice(1).join('.'));
-}
-assert(new Set(runtimeVersions).size === 1, `HOL Guard runtime pins must match across review assets: ${runtimeVersions.join(', ')}`);
+assert(
+  runtimePins.targets.every((target) => target.version === runtimePins.version),
+  'HOL Guard runtime pins must match across review assets',
+);
+assert(
+  payloadReadme.includes(`pipx install hol-guard==${runtimePins.version}`),
+  'README must use the canonical synchronized HOL Guard runtime pin',
+);
 
 const forbiddenPaths = [
   '.mcp.json',
@@ -109,4 +106,4 @@ assert(
   'scanner must retain the no-execution safety rule',
 );
 
-console.log(`wshobson/agents HOL Guard payload validation passed with runtime ${runtimeVersions[0]}.`);
+console.log(`wshobson/agents HOL Guard payload validation passed with runtime ${runtimePins.version}.`);
