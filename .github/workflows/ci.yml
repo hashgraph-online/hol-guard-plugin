@@ -49,7 +49,18 @@ jobs:
       - name: Run real DSH headless integration
         env:
           DSH_SOURCE: ${{ runner.temp }}/deepseek-harness
-        run: npm run test:dsh-e2e
+        run: |
+          set -o pipefail
+          npm run test:dsh-e2e 2>&1 | tee "${RUNNER_TEMP}/dsh-e2e.log"
+
+      - name: Upload DSH E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dsh-e2e-diagnostics
+          path: ${{ runner.temp }}/dsh-e2e.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Install Codex Plugin Scanner
         run: python3 -m pip install --user "codex-plugin-scanner[cisco]==2.0.12"
