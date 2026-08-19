@@ -11,7 +11,7 @@ export const RUNTIME_PIN_TARGETS = Object.freeze([
 ]);
 
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const INSTALL_COMMAND_PATTERN = /\bpipx install hol-guard(?:==([^\s`'"\\]+))?/g;
+const INSTALL_COMMAND_PATTERN = /\bpipx install hol-guard(?:==([^\s`'"\\]+))?(?=$|[\s`'"])/gm;
 
 export function validateStableVersion(version) {
   if (typeof version !== 'string' || !STABLE_VERSION_PATTERN.test(version)) {

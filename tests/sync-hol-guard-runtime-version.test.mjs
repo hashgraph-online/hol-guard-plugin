@@ -99,6 +99,10 @@ test('fails closed when a target is missing, duplicated, unpinned, or divergent'
   await writeFile(path.join(unpinnedRoot, RUNTIME_PIN_TARGETS[0]), 'pipx install hol-guard\n', 'utf8');
   await assert.rejects(inspectHolGuardRuntimePins(unpinnedRoot), /must pin HOL Guard/);
 
+  const nearMatchRoot = await createFixture();
+  await writeFile(path.join(nearMatchRoot, RUNTIME_PIN_TARGETS[0]), 'pipx install hol-guardian==2.1.27\n', 'utf8');
+  await assert.rejects(inspectHolGuardRuntimePins(nearMatchRoot), /exactly one/);
+
   const divergentRoot = await createFixture();
   await writeFile(path.join(divergentRoot, RUNTIME_PIN_TARGETS[0]), 'pipx install hol-guard==2.1.26\n', 'utf8');
   await assert.rejects(inspectHolGuardRuntimePins(divergentRoot), /pins have drifted/);
