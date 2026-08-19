@@ -1,0 +1,60 @@
+name: ClawHub Distribution
+
+on:
+  pull_request:
+    paths:
+      - distributions/clawhub/**
+      - .github/workflows/clawhub-distribution.yml
+  push:
+    branches:
+      - main
+    paths:
+      - distributions/clawhub/**
+      - .github/workflows/clawhub-distribution.yml
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the current HOL Guard ClawHub skill instead of previewing it.
+        required: true
+        type: boolean
+        default: false
+      owner:
+        description: Optional ClawHub publisher handle. Leave blank to use the token owner.
+        required: false
+        type: string
+        default: ""
+      changelog:
+        description: Optional release changelog for a real publish.
+        required: false
+        type: string
+        default: ""
+
+# The pinned ClawHub reusable workflow resolves its own immutable source through
+# GitHub OIDC, so callers must grant id-token: write. It does not write repository
+# contents.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  preview:
+    if: github.event_name != 'workflow_dispatch' || inputs.publish == false
+    uses: openclaw/clawhub/.github/workflows/skill-publish.yml@d6a8c68501d4244664ce443e686c24292f607471
+    with:
+      skill_path: distributions/clawhub/hol-guard
+      dry_run: true
+      categories: security,development,operations
+      topics: supply-chain,prompt-injection,ai-security,developer-tools,open-source
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+    uses: openclaw/clawhub/.github/workflows/skill-publish.yml@d6a8c68501d4244664ce443e686c24292f607471
+    with:
+      skill_path: distributions/clawhub/hol-guard
+      dry_run: false
+      owner: ${{ inputs.owner }}
+      changelog: ${{ inputs.changelog }}
+      categories: security,development,operations
+      topics: supply-chain,prompt-injection,ai-security,developer-tools,open-source
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
