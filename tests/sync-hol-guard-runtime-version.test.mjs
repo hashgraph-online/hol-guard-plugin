@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -15,6 +15,7 @@ import {
 } from '../scripts/sync-hol-guard-runtime-version.mjs';
 
 const execFileAsync = promisify(execFile);
+const repositoryRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const scriptPath = fileURLToPath(new URL('../scripts/sync-hol-guard-runtime-version.mjs', import.meta.url));
 const temporaryRoots = [];
 
@@ -29,12 +30,15 @@ async function createFixture(version = '2.1.27') {
   return root;
 }
 
+async function readFixture(root) {
+  return Promise.all(RUNTIME_PIN_TARGETS.map((target) => readFile(path.join(root, target), 'utf8')));
+}
+
 test.after(async () => {
   await Promise.all(temporaryRoots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
 test('the repository review payload starts synchronized', async () => {
-  const repositoryRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   const inspected = await inspectHolGuardRuntimePins(repositoryRoot);
   assert.match(inspected.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
 });
@@ -76,10 +80,79 @@ test('the command-line entry point performs a real fixture update and check', as
   assert.match(check.stdout, /synchronized at 3\.0\.1/);
 });
 
-test('rejects prereleases, malformed versions, and shell-like input', () => {
-  for (const version of ['2.1.28rc1', '2.1.28-alpha.1', 'v2.1.28', 'latest', '2.1', '2.1.28;echo pwned']) {
+test('rejects prereleases, malformed versions, line terminators, and shell-like input', () => {
+  for (const version of [
+    '2.1.28rc1',
+    '2.1.28-alpha.1',
+    'v2.1.28',
+    'latest',
+    '2.1',
+    '2.1.28;echo pwned',
+    '2.1.28\n',
+    '2.1.28\r\n',
+  ]) {
     assert.throws(() => validateStableVersion(version), /exact stable X\.Y\.Z/);
   }
+});
+
+test('the CLI rejects a version containing a trailing line terminator', async () => {
+  const root = await createFixture();
+  await assert.rejects(
+    execFileAsync(process.execPath, [scriptPath, '--root', root, '--version', '2.1.28\n']),
+    (error) => {
+      assert.match(error.stderr, /exact stable X\.Y\.Z/);
+      return true;
+    },
+  );
+  assert.deepEqual(await readFixture(root), await readFixture(root));
+});
+
+test('preparation failure leaves every reviewed pin unchanged', async () => {
+  const root = await createFixture();
+  const before = await readFixture(root);
+  let writes = 0;
+  const fileOperations = {
+    rename,
+    rm,
+    writeFile: async (...arguments_) => {
+      writes += 1;
+      if (writes === 2) {
+        throw new Error('injected preparation failure');
+      }
+      return writeFile(...arguments_);
+    },
+  };
+
+  await assert.rejects(
+    syncHolGuardRuntimeVersion({ root, version: '2.1.28', fileOperations }),
+    /injected preparation failure/,
+  );
+  assert.deepEqual(await readFixture(root), before);
+  assert.equal((await inspectHolGuardRuntimePins(root)).version, '2.1.27');
+});
+
+test('commit failure rolls back every pin already replaced', async () => {
+  const root = await createFixture();
+  const before = await readFixture(root);
+  let renames = 0;
+  const fileOperations = {
+    rm,
+    writeFile,
+    rename: async (...arguments_) => {
+      renames += 1;
+      if (renames === 2) {
+        throw new Error('injected commit failure');
+      }
+      return rename(...arguments_);
+    },
+  };
+
+  await assert.rejects(
+    syncHolGuardRuntimeVersion({ root, version: '2.1.28', fileOperations }),
+    /injected commit failure/,
+  );
+  assert.deepEqual(await readFixture(root), before);
+  assert.equal((await inspectHolGuardRuntimePins(root)).version, '2.1.27');
 });
 
 test('fails closed when a target is missing, duplicated, unpinned, or divergent', async () => {
@@ -106,4 +179,16 @@ test('fails closed when a target is missing, duplicated, unpinned, or divergent'
   const divergentRoot = await createFixture();
   await writeFile(path.join(divergentRoot, RUNTIME_PIN_TARGETS[0]), 'pipx install hol-guard==2.1.26\n', 'utf8');
   await assert.rejects(inspectHolGuardRuntimePins(divergentRoot), /pins have drifted/);
+});
+
+test('the workflow validates PR code read-only and publishes only from trusted main', async () => {
+  const workflow = await readFile(path.join(repositoryRoot, '.github/workflows/sync-hol-guard-runtime-version.yml'), 'utf8');
+
+  assert.match(workflow, /permissions:\n  contents: read/);
+  assert.match(workflow, /verify-updater:[\s\S]*persist-credentials: false/);
+  assert.match(workflow, /sync-runtime:[\s\S]*if: github\.event_name != 'pull_request'/);
+  assert.match(workflow, /sync-runtime:[\s\S]*permissions:\n      contents: write/);
+  assert.match(workflow, /sync-runtime:[\s\S]*ref: main/);
+  assert.match(workflow, /git reset --hard origin\/main/);
+  assert.doesNotMatch(workflow, /git rebase/);
 });
