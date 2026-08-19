@@ -264,7 +264,11 @@ async function runScenario({ protectedByGuard }) {
       assert.equal(records[0].tool_name, 'bash');
       assert.equal(records[0].tool_input.command, command);
     } else {
-      assert.equal(sentinelExists, true, `Unprotected DSH control did not execute its bash tool:\n${combined}`);
+      assert.equal(
+        sentinelExists,
+        true,
+        `Unprotected DSH control did not execute its bash tool:\n${combined}\nProvider requests:\n${JSON.stringify(provider.requests, null, 2)}`,
+      );
     }
   } finally {
     await provider.close();
