@@ -25,7 +25,9 @@ It contains **no**:
 - `scripts/` directory, executable helper, install script, `preinstall`, `postinstall`, or package lifecycle script;
 - background daemon, telemetry setup, OAuth flow, hosted-service endpoint, or credential collection.
 
-The Markdown skills reference local shell commands. The only package installation command is `pipx install hol-guard`, and the skills allow it only when the user explicitly asks to set up HOL Guard or approves installation after the CLI availability check. That command installs the open-source package directly from the user's configured Python package index. It does not transmit workspace contents.
+The Markdown skills reference local shell commands. The only package installation command is `pipx install hol-guard==2.2.115`, and the skills allow it only when the user explicitly asks to set up HOL Guard or approves installation after the CLI availability check. That command installs the reviewed open-source runtime version directly from the user's configured Python package index. It does not transmit workspace contents.
+
+The external `hol-guard` runtime can modify supported harness hook/settings configuration when the user explicitly requests protection through commands such as `hol-guard install <harness>`. Those changes are performed by the local Guard CLI, not by files in this marketplace payload, and are gated on the user's request for protection.
 
 After installation, the skills invoke local commands such as `hol-guard status`, `hol-guard install <harness>`, `hol-guard run <harness>`, and `plugin-scanner scan <path>`. Harness configuration changes are performed by the local Guard CLI only when the user requested protection. Scanner guidance explicitly forbids executing code or lifecycle scripts from the target being inspected.
 

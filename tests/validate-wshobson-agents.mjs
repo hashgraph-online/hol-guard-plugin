@@ -2,6 +2,8 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { inspectHolGuardRuntimePins } from '../scripts/sync-hol-guard-runtime-version.mjs';
+
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const payloadRoot = path.join(root, 'distributions', 'wshobson-agents');
 
@@ -26,14 +28,17 @@ async function walk(directory, relative = '') {
   return files;
 }
 
+const readmePath = path.join(payloadRoot, 'README.md');
 const manifestPath = path.join(payloadRoot, '.claude-plugin', 'plugin.json');
 const holGuardSkillPath = path.join(payloadRoot, 'skills', 'hol-guard', 'SKILL.md');
 const scannerSkillPath = path.join(payloadRoot, 'skills', 'plugin-scanner', 'SKILL.md');
 
+const payloadReadme = await readFile(readmePath, 'utf8');
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const holGuardSkill = await readFile(holGuardSkillPath, 'utf8');
 const scannerSkill = await readFile(scannerSkillPath, 'utf8');
 const files = await walk(payloadRoot);
+const runtimePins = await inspectHolGuardRuntimePins(root);
 
 assert(manifest.name === 'hol-guard', 'wshobson payload plugin name must be hol-guard');
 assert(manifest.license === 'Apache-2.0', 'wshobson payload must declare Apache-2.0');
@@ -49,6 +54,15 @@ for (const [name, skill] of [
   assert(skill.includes('pipx install hol-guard'), `${name} skill must use the isolated pipx install path`);
   assert(skill.toLowerCase().includes('local'), `${name} skill must explicitly describe local execution`);
 }
+
+assert(
+  runtimePins.targets.every((target) => target.version === runtimePins.version),
+  'HOL Guard runtime pins must match across review assets',
+);
+assert(
+  payloadReadme.includes(`pipx install hol-guard==${runtimePins.version}`),
+  'README must use the canonical synchronized HOL Guard runtime pin',
+);
 
 const forbiddenPaths = [
   '.mcp.json',
@@ -92,4 +106,4 @@ assert(
   'scanner must retain the no-execution safety rule',
 );
 
-console.log('wshobson/agents HOL Guard payload validation passed.');
+console.log(`wshobson/agents HOL Guard payload validation passed with runtime ${runtimePins.version}.`);
