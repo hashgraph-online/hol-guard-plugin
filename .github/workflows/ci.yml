@@ -66,8 +66,19 @@ jobs:
 
       - name: Scan plugin package
         run: |
+          set -o pipefail
           codex-plugin-scanner scan . \
             --format json \
             --cisco-skill-scan auto \
             --min-score 95 \
-            --fail-on-severity medium
+            --fail-on-severity medium \
+            2>&1 | tee "${RUNNER_TEMP}/plugin-scan.log"
+
+      - name: Upload plugin scan diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plugin-scan-diagnostics
+          path: ${{ runner.temp }}/plugin-scan.log
+          if-no-files-found: error
+          retention-days: 3
