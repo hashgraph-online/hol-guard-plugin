@@ -97,6 +97,7 @@ test('rejects prereleases, malformed versions, line terminators, and shell-like 
 
 test('the CLI rejects a version containing a trailing line terminator', async () => {
   const root = await createFixture();
+  const before = await readFixture(root);
   await assert.rejects(
     execFileAsync(process.execPath, [scriptPath, '--root', root, '--version', '2.1.28\n']),
     (error) => {
@@ -104,7 +105,7 @@ test('the CLI rejects a version containing a trailing line terminator', async ()
       return true;
     },
   );
-  assert.deepEqual(await readFixture(root), await readFixture(root));
+  assert.deepEqual(await readFixture(root), before);
 });
 
 test('preparation failure leaves every reviewed pin unchanged', async () => {
