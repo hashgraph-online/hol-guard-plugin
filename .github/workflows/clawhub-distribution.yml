@@ -29,8 +29,12 @@ on:
         type: string
         default: ""
 
+# The pinned ClawHub reusable workflow resolves its own immutable source through
+# GitHub OIDC, so callers must grant id-token: write. It does not write repository
+# contents.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   preview:
