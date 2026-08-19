@@ -20,6 +20,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate shared versioned distribution metadata
+        run: node tests/validate-spec-kit.mjs
+
       - name: Install pinned GitHub CLI with Agent Skills support
         env:
           GH_VERSION: "2.92.0"
