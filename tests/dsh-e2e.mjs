@@ -232,7 +232,7 @@ async function runScenario({ protectedByGuard }) {
       assert.match(`${dumped.stdout}\n${dumped.stderr}`, /hol-guard/);
     }
 
-    const result = await runDsh(['--profile', 'headless', 'Write the integration sentinel with bash.'], {
+    const result = await runDsh(['--profile', 'headless', '--prompt', 'Write the integration sentinel with bash.'], {
       env,
       cwd: workspace,
     });
