@@ -21,7 +21,7 @@ jobs:
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main') ||
+       github.event.workflow_run.event == 'push') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -35,23 +35,37 @@ jobs:
 
       - name: Resolve and verify source commit
         id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
-            sha="${{ github.event.workflow_run.head_sha }}"
+            if [[ ! "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]; then
+              echo "Unable to resolve the completed publisher run." >&2
+              exit 1
+            fi
+            run_path="repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}"
+            source_event="$(gh api "$run_path" --jq '.event')"
+            source_branch="$(gh api "$run_path" --jq '.head_branch')"
+            sha="$(gh api "$run_path" --jq '.head_sha')"
+            if [[ "$source_event" != "push" || "$source_branch" != "main" ]]; then
+              echo "Refusing publisher run ${SOURCE_RUN_ID}: expected a push on main." >&2
+              exit 1
+            fi
           else
             sha="${GITHUB_SHA}"
           fi
+
           if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Unable to resolve a valid main commit to verify." >&2
             exit 1
           fi
 
-          # Never execute a workflow_run-provided revision until it is proven
-          # to be part of the trusted main history. actions/checkout itself
-          # only checks out the fixed main ref, avoiding a privileged dynamic
-          # checkout while preserving exact-release verification below.
+          # actions/checkout only checks out fixed trusted main. Before any
+          # repository code runs, prove the completed publisher SHA belongs to
+          # that main history, then detach to the exact release source.
           git fetch --force origin main
           if ! git merge-base --is-ancestor "$sha" origin/main; then
             echo "Refusing to verify $sha because it is not in trusted main history." >&2
