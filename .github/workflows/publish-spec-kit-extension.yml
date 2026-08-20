@@ -26,7 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Resolve source commit
+      - name: Checkout trusted main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and verify source commit
         id: source
         shell: bash
         run: |
@@ -36,18 +43,22 @@ jobs:
           else
             sha="${GITHUB_SHA}"
           fi
-          if [[ -z "$sha" ]]; then
-            echo "Unable to resolve the exact main commit to verify." >&2
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unable to resolve a valid main commit to verify." >&2
             exit 1
           fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout exact released source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.source.outputs.sha }}
-          fetch-depth: 0
-          persist-credentials: false
+          # Never execute a workflow_run-provided revision until it is proven
+          # to be part of the trusted main history. actions/checkout itself
+          # only checks out the fixed main ref, avoiding a privileged dynamic
+          # checkout while preserving exact-release verification below.
+          git fetch --force origin main
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "Refusing to verify $sha because it is not in trusted main history." >&2
+            exit 1
+          fi
+          git checkout --detach "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
