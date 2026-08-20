@@ -140,7 +140,9 @@ jobs:
           cd "$workdir"
 
           specify init --here --force --non-interactive --ignore-agent-tools
-          specify extension add hol-guard --from "$ARCHIVE_URL"
+          # Direct --from installs intentionally require explicit user consent.
+          # Provide exactly one affirmative response for this verified release URL.
+          printf 'y\n' | specify extension add hol-guard --from "$ARCHIVE_URL"
           specify extension list | tee installed-extensions.txt
           grep -F "hol-guard" installed-extensions.txt
 
