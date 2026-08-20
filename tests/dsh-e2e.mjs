@@ -20,10 +20,6 @@ const dshPrefixArgs = sourceDshEntry === null ? [] : [sourceDshEntry];
 if (sourceDshEntry === null) await access(dshCommand);
 else await access(sourceDshEntry);
 
-function shellQuote(value) {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
-
 async function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -121,7 +117,10 @@ function writeTextResponse(response) {
     }],
   });
   writeSse(response, {
-    choices: [{ delta: {} }],
+    choices: [{
+      delta: { content: '' },
+      finish_reason: 'stop',
+    }],
     usage: usage(3, 4),
   });
 }
@@ -150,7 +149,7 @@ async function startMockProvider({ command }) {
       writeSse(response, '[DONE]');
       response.end();
     } catch (error) {
-      errors.push(error instanceof Error ? error.stack ?? error.message : String(error));
+      errors.push(error instanceof Error ? error.message : String(error));
       if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: { message: 'mock inference provider failure' } }));
     }
@@ -202,7 +201,7 @@ async function runScenario({ protectedByGuard }) {
   const sentinel = path.join(workspace, 'sentinel.txt');
   const guardLog = path.join(tempDir, 'guard.jsonl');
   await mkdir(workspace, { recursive: true });
-  const command = `printf executed > ${shellQuote(sentinel)}`;
+  const command = 'printf executed > sentinel.txt';
   const provider = await startMockProvider({ command });
   const {
     HOL_GUARD_COMMAND: _guardCommand,
