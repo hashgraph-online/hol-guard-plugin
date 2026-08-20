@@ -125,6 +125,21 @@ function writeTextResponse(response) {
   });
 }
 
+function summarizeProviderRequests(requests) {
+  return requests.map((request, index) => {
+    const messages = Array.isArray(request?.messages) ? request.messages : [];
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    return {
+      index: index + 1,
+      model: typeof request?.model === 'string' ? request.model : null,
+      messageCount: messages.length,
+      lastMessageRole: typeof lastMessage?.role === 'string' ? lastMessage.role : null,
+      offeredToolCount: Array.isArray(request?.tools) ? request.tools.length : 0,
+      streaming: request?.stream === true,
+    };
+  });
+}
+
 async function startMockProvider({ command }) {
   const requests = [];
   const errors = [];
@@ -263,7 +278,7 @@ async function runScenario({ protectedByGuard }) {
       assert.equal(
         sentinelExists,
         true,
-        `Unprotected DSH control did not execute its bash tool:\n${combined}`,
+        `Unprotected DSH control did not execute its bash tool:\n${combined}\nProvider flow:\n${JSON.stringify(summarizeProviderRequests(provider.requests), null, 2)}`,
       );
     }
   } finally {
