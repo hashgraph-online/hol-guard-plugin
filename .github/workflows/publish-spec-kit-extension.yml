@@ -125,7 +125,9 @@ jobs:
             exit 1
           fi
 
-          ARCHIVE_URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.zip"
+          # Bind installation to the exact commit whose package digest was verified.
+          # Keep the human-readable tag only as reporting metadata.
+          ARCHIVE_URL="https://github.com/${GITHUB_REPOSITORY}/archive/${TAG_COMMIT}.zip"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "archive_url=$ARCHIVE_URL" >> "$GITHUB_OUTPUT"
 
