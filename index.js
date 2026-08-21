@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn as spawnProcess } from 'node:child_process';
 import process from 'node:process';
 
 import { prepareGuardProcess } from './dsh-process.js';
@@ -292,7 +292,7 @@ async function terminateProcessTree(child) {
     await new Promise((resolve) => {
       let killer;
       try {
-        killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+        killer = spawnProcess('taskkill', ['/PID', String(pid), '/T', '/F'], {
           windowsHide: true,
           stdio: 'ignore',
         });
@@ -333,7 +333,7 @@ export function spawnGuardHook({ command, args, cwd, env, input, signal, timeout
     }
     let child;
     try {
-      child = spawn(command, args, {
+      child = spawnProcess(command, args, {
         cwd,
         env,
         detached: process.platform !== 'win32',
