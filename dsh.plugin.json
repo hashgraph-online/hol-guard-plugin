@@ -1,7 +1,7 @@
 {
   "name": "hol-guard-plugin",
   "description": "Fail-closed HOL Guard policy enforcement for DeepSeek Harness tool calls",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "entry": {
     "name": "hol-guard-plugin",
     "inject": []
