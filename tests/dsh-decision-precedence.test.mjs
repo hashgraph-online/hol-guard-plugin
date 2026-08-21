@@ -33,6 +33,45 @@ test('continue false dominates an otherwise explicit allow', () => {
   );
 });
 
+test('same-layer denial fields cannot be hidden by hook-specific decisions', () => {
+  assert.deepEqual(
+    decisionFromGuardResponse({
+      hookSpecificOutput: {
+        permissionDecision: 'ask',
+        permissionDecisionReason: 'hook requested approval',
+      },
+      decision: 'deny',
+      reason: 'top-level denial',
+    }),
+    {
+      kind: 'deny',
+      reason: 'top-level denial',
+    },
+  );
+  assert.deepEqual(
+    decisionFromGuardResponse({
+      hookSpecificOutput: { permissionDecision: 'allow' },
+      permissionDecision: 'ask',
+    }),
+    {
+      kind: 'ask',
+      reason: 'HOL Guard requires approval for this DSH tool call.',
+    },
+  );
+  assert.deepEqual(
+    decisionFromGuardResponse({
+      hookSpecificOutput: { permissionDecision: 'allow' },
+      permissionDecision: 'allow',
+      decision: 'block',
+      reason: 'explicit block wins',
+    }),
+    {
+      kind: 'deny',
+      reason: 'explicit block wins',
+    },
+  );
+});
+
 test('nested and sibling denial signals cannot be hidden by an outer allow', () => {
   assert.deepEqual(
     decisionFromGuardResponse({
