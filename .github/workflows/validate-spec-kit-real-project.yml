@@ -1,0 +1,155 @@
+name: Validate Spec Kit Real Project
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate-spec-kit-real-project.yml"
+      - "extension.yml"
+      - "commands/**"
+      - "package.json"
+      - "package-lock.json"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/validate-spec-kit-real-project.yml"
+      - "extension.yml"
+      - "commands/**"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-spec-kit-real-project-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Exercise released extension in a real Spec Kit project
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install repository dependencies
+        run: npm ci
+
+      - name: Validate manifest and shared version
+        run: node tests/validate-spec-kit.mjs
+
+      - name: Install pinned Spec Kit CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user --disable-pip-version-check \
+            "git+https://github.com/github/spec-kit.git@ead30d9cfb99c07b3073afa73e7b40a64015f17f"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned HOL Guard CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user --disable-pip-version-check "hol-guard==2.2.115"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve exact released archive
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          TAG="v${VERSION}"
+          PACKAGE_PATHS=(extension.yml commands README.md LICENSE)
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          git fetch --force --tags origin
+          TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+          if [[ ! "$TAG_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unable to resolve commit for $TAG." >&2
+            exit 1
+          fi
+
+          CURRENT_PACKAGE_DIGEST="$(git ls-tree -r HEAD -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
+          TAG_PACKAGE_DIGEST="$(git ls-tree -r "$TAG_COMMIT" -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
+          if [[ "$TAG_PACKAGE_DIGEST" != "$CURRENT_PACKAGE_DIGEST" ]]; then
+            echo "$TAG does not contain the current Spec Kit package. Bump package.json and extension.yml together before publishing." >&2
+            exit 1
+          fi
+
+          ARCHIVE_URL="https://github.com/${GITHUB_REPOSITORY}/archive/${TAG_COMMIT}.zip"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag_commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "archive_url=$ARCHIVE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Install and exercise extension in a real project
+        env:
+          ARCHIVE_URL: ${{ steps.release.outputs.archive_url }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.tag_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+          cd "$workdir"
+
+          specify init --here --force --non-interactive --ignore-agent-tools \
+            --integration generic \
+            --integration-options="--commands-dir .agent/commands"
+
+          printf 'y\n' | specify extension add hol-guard --from "$ARCHIVE_URL"
+          specify extension list | tee installed-extensions.txt
+          grep -F "hol-guard" installed-extensions.txt
+          specify integration status --json | tee integration-status.json
+
+          PROTECT_COMMAND=".agent/commands/speckit.hol-guard.protect.md"
+          SCAN_COMMAND=".agent/commands/speckit.hol-guard.scan.md"
+          test -f "$PROTECT_COMMAND"
+          test -f "$SCAN_COMMAND"
+          grep -F "hol-guard status" "$PROTECT_COMMAND"
+          grep -F "hol-guard detect --json" "$PROTECT_COMMAND"
+          grep -F "plugin-scanner lint" "$SCAN_COMMAND"
+          grep -F "plugin-scanner verify" "$SCAN_COMMAND"
+
+          # Exercise the non-mutating path documented by the protect command.
+          # The command deliberately requires explicit user intent before any
+          # harness installation, so CI must not run `hol-guard install ...`.
+          hol-guard status | tee hol-guard-status.txt
+          hol-guard detect --json | tee hol-guard-detect.json
+
+          # Exercise both scanner operations against the released portable skill.
+          SCAN_TARGET=".specify/extensions/hol-guard/skills/plugin-scanner"
+          test -f "$SCAN_TARGET/SKILL.md"
+          plugin-scanner lint "$SCAN_TARGET" | tee plugin-scanner-lint.txt
+          plugin-scanner verify "$SCAN_TARGET" | tee plugin-scanner-verify.txt
+
+          {
+            echo "## HOL Guard Spec Kit real-project validation"
+            echo
+            echo "- Release: \`$RELEASE_TAG\`"
+            echo "- Immutable release commit: \`$RELEASE_COMMIT\`"
+            echo "- Integration: generic commands directory at \`.agent/commands\`"
+            echo "- Registered command: \`speckit.hol-guard.protect\`"
+            echo "- Registered command: \`speckit.hol-guard.scan\`"
+            echo "- Protect recipe exercised: \`hol-guard status\`, \`hol-guard detect --json\`"
+            echo "- Scan recipe exercised: \`plugin-scanner lint\`, \`plugin-scanner verify\`"
+            echo "- Mutating harness installation intentionally skipped because the command requires explicit user intent."
+          } >> "$GITHUB_STEP_SUMMARY"
