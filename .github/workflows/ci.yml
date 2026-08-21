@@ -37,6 +37,14 @@ jobs:
           python -m pip install "./integrations/pydantic-ai-hol-guard[test]"
           python -m pytest -q integrations/pydantic-ai-hol-guard/tests
 
+      - name: Test LangChain HOL Guard integration
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/langchain-hol-guard-venv"
+          source "${RUNNER_TEMP}/langchain-hol-guard-venv/bin/activate"
+          python -m pip install --upgrade pip
+          python -m pip install "./integrations/langchain-hol-guard[test]"
+          python -m pytest -q integrations/langchain-hol-guard/tests
+
       - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
