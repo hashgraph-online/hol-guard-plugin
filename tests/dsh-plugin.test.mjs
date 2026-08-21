@@ -29,7 +29,7 @@ async function fakeGuard(body) {
   const script = path.join(dir, 'guard.mjs');
   await writeFile(script, `#!/usr/bin/env node\n${body}\n`, 'utf8');
   await chmod(script, 0o755);
-  return { script, cleanup: () => rm(dir, { recursive: true, force: true }) };
+  return { script: [process.execPath, script], cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
 function pluginContext({ approval, includeTools = true } = {}) {
