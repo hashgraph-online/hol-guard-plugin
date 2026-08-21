@@ -1,6 +1,7 @@
 using HolGuard.SemanticKernel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
+using Xunit;
 
 namespace HolGuard.SemanticKernel.Tests;
 
