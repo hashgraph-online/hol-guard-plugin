@@ -27,18 +27,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Resolve package metadata
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import tomllib
+
+          with open("integrations/langchain-hol-guard/pyproject.toml", "rb") as handle:
+              project = tomllib.load(handle)["project"]
+
+          package_name = project["name"]
+          package_version = project["version"]
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"PACKAGE_NAME={package_name}\n")
+              env.write(f"PACKAGE_VERSION={package_version}\n")
+          print(f"Resolved {package_name} {package_version}")
+          PY
+
       - name: Report publication pending
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          curl --fail-with-body --silent --show-error \
+          if ! curl --fail-with-body --silent --show-error \
             -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d "{\"state\":\"pending\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"Building and checking PyPI publication\"}" >/dev/null
+            -d "{\"state\":\"pending\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"Building and checking ${PACKAGE_NAME} ${PACKAGE_VERSION}\"}"; then
+            echo "::warning::Unable to post pending ${STATUS_CONTEXT} status; publication will continue."
+          fi
 
       - name: Build and validate distribution
         run: |
@@ -57,9 +77,12 @@ jobs:
           import json
           import os
           import urllib.error
+          import urllib.parse
           import urllib.request
 
-          url = "https://pypi.org/pypi/langchain-hol-guard/json"
+          package_name = os.environ["PACKAGE_NAME"]
+          package_version = os.environ["PACKAGE_VERSION"]
+          url = f"https://pypi.org/pypi/{urllib.parse.quote(package_name)}/json"
           exists = False
           try:
               request = urllib.request.Request(
@@ -68,14 +91,14 @@ jobs:
               )
               with urllib.request.urlopen(request, timeout=20) as response:
                   payload = json.loads(response.read().decode("utf-8"))
-              exists = "0.1.0" in payload.get("releases", {})
+              exists = package_version in payload.get("releases", {})
           except urllib.error.HTTPError as exc:
               if exc.code != 404:
                   raise
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"exists={'true' if exists else 'false'}\n")
-          print(f"langchain-hol-guard 0.1.0 already published: {exists}")
+          print(f"{package_name} {package_version} already published: {exists}")
           PY
 
       - name: Require configured PyPI publisher
@@ -101,11 +124,11 @@ jobs:
           source "${RUNNER_TEMP}/langchain-hol-guard-pypi-verify/bin/activate"
           python -m pip install --upgrade pip
           for attempt in 1 2 3 4 5; do
-            if python -m pip install --no-cache-dir "langchain-hol-guard==0.1.0"; then
+            if python -m pip install --no-cache-dir "${PACKAGE_NAME}==${PACKAGE_VERSION}"; then
               python - <<'PY'
           from langchain_hol_guard import HolGuardMiddleware
           assert HolGuardMiddleware is not None
-          print("langchain-hol-guard 0.1.0 is installable from PyPI")
+          print("langchain-hol-guard is installable from PyPI")
           PY
               exit 0
             fi
@@ -113,33 +136,31 @@ jobs:
               sleep 20
             fi
           done
-          echo "langchain-hol-guard 0.1.0 did not become installable within the verification window." >&2
+          echo "${PACKAGE_NAME} ${PACKAGE_VERSION} did not become installable within the verification window." >&2
           exit 1
 
-      - name: Report publication verified
-        if: success()
+      - name: Report terminal publication status
+        if: always()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
         run: |
-          set -euo pipefail
-          curl --fail-with-body --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d "{\"state\":\"success\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"PyPI version 0.1.0 install verified\"}" >/dev/null
+          state="error"
+          description="PyPI publication or install verification ${JOB_STATUS}"
+          if [ "${JOB_STATUS}" = "success" ]; then
+            state="success"
+            description="PyPI ${PACKAGE_NAME} ${PACKAGE_VERSION} install verified"
+          elif [ "${JOB_STATUS}" = "cancelled" ]; then
+            description="PyPI publication or install verification cancelled"
+          fi
 
-      - name: Report publication failure
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          curl --fail-with-body --silent --show-error \
+          if ! curl --fail-with-body --silent --show-error \
             -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d "{\"state\":\"error\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"PyPI publication or install verification failed\"}" >/dev/null
+            -d "{\"state\":\"${state}\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"${description}\"}"; then
+            echo "::warning::Unable to post terminal ${STATUS_CONTEXT} status (${JOB_STATUS})."
+          fi
