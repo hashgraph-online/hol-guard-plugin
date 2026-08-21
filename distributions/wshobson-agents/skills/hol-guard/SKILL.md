@@ -31,7 +31,7 @@ command -v plugin-scanner
 If `hol-guard` is missing, install the local runtime only when the user explicitly asked for setup or approved installation:
 
 ```bash
-pipx install hol-guard==2.2.117
+pipx install hol-guard==2.2.119
 ```
 
 If `plugin-scanner` is missing and the user asks to scan agent tooling, use the bundled `plugin-scanner` skill for its separate approved installation flow. Do not assume the `hol-guard` distribution provides the scanner CLI.
