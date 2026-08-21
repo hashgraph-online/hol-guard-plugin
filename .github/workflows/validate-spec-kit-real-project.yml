@@ -1,22 +1,15 @@
 name: Validate Spec Kit Real Project
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/validate-spec-kit-real-project.yml"
-      - "extension.yml"
-      - "commands/**"
-      - "package.json"
-      - "package-lock.json"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/validate-spec-kit-real-project.yml"
-      - "extension.yml"
-      - "commands/**"
-      - "package.json"
-      - "package-lock.json"
+      - "tests/validate-spec-kit.mjs"
+  release:
+    types:
+      - published
   workflow_dispatch:
 
 permissions:
@@ -29,12 +22,14 @@ concurrency:
 jobs:
   validate:
     name: Exercise released extension in a real Spec Kit project
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout repository
+      - name: Checkout trusted main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -96,7 +91,7 @@ jobs:
           CURRENT_PACKAGE_DIGEST="$(git ls-tree -r HEAD -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
           TAG_PACKAGE_DIGEST="$(git ls-tree -r "$TAG_COMMIT" -- "${PACKAGE_PATHS[@]}" | sha256sum | awk '{print $1}')"
           if [[ "$TAG_PACKAGE_DIGEST" != "$CURRENT_PACKAGE_DIGEST" ]]; then
-            echo "$TAG does not contain the current Spec Kit package. Bump package.json and extension.yml together before publishing." >&2
+            echo "$TAG does not contain the current Spec Kit package. Publish a coherent release before validating catalog readiness." >&2
             exit 1
           fi
 
@@ -119,9 +114,8 @@ jobs:
           trap 'rm -rf "$workdir"' EXIT
           cd "$workdir"
 
-          # Generic is intentionally excluded from Spec Kit's extension command
-          # registrar. Use a supported command-backed integration while bypassing
-          # the external agent binary check so this tests Spec Kit itself.
+          # Use a supported command-backed integration while bypassing the
+          # external agent binary check so this tests Spec Kit itself.
           specify init --here --force --non-interactive --ignore-agent-tools \
             --integration gemini
 
@@ -195,9 +189,12 @@ jobs:
           hol-guard status | tee hol-guard-status.txt
           hol-guard detect --json | tee hol-guard-detect.json
 
-          # Exercise both scanner operations against the released portable skill.
-          SCAN_TARGET=".specify/extensions/hol-guard/skills/plugin-scanner"
-          test -f "$SCAN_TARGET/SKILL.md"
+          # Exercise both scanner operations against the exact installed
+          # extension package. Scanning only the nested skill is not a valid
+          # plugin verification target because it intentionally lacks the root
+          # plugin manifest, README, LICENSE, SECURITY.md, and .codexignore.
+          SCAN_TARGET=".specify/extensions/hol-guard"
+          test -f "$SCAN_TARGET/skills/plugin-scanner/SKILL.md"
           plugin-scanner lint "$SCAN_TARGET" | tee plugin-scanner-lint.txt
           plugin-scanner verify "$SCAN_TARGET" | tee plugin-scanner-verify.txt
 
@@ -210,6 +207,6 @@ jobs:
             echo "- Rendered protect command: \`$PROTECT_COMMAND\`"
             echo "- Rendered scan command: \`$SCAN_COMMAND\`"
             echo "- Protect recipe exercised: \`hol-guard status\`, \`hol-guard detect --json\`"
-            echo "- Scan recipe exercised: \`plugin-scanner lint\`, \`plugin-scanner verify\`"
+            echo "- Scan recipe exercised against installed extension root: \`plugin-scanner lint\`, \`plugin-scanner verify\`"
             echo "- Mutating harness installation intentionally skipped because the command requires explicit user intent."
           } >> "$GITHUB_STEP_SUMMARY"
