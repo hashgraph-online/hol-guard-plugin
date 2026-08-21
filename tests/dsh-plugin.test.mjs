@@ -27,9 +27,9 @@ function execution(command = 'printf safe', overrides = {}) {
 async function fakeGuard(body) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'hol-guard-dsh-test-'));
   const script = path.join(dir, 'guard.mjs');
-  await writeFile(script, `#!/usr/bin/env node\n${body}\n`, 'utf8');
+  await writeFile(script, `#!${process.execPath}\n${body}\n`, 'utf8');
   await chmod(script, 0o755);
-  return { script: [process.execPath, script], cleanup: () => rm(dir, { recursive: true, force: true }) };
+  return { script, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
 function pluginContext({ approval, includeTools = true } = {}) {
