@@ -411,7 +411,7 @@ export function spawnGuardHook({ command, args, cwd, env, input, signal, timeout
 }
 
 async function evaluatePreparedToolExecution(exec, config, request) {
-  const timeoutMs = boundedTimeout(config.timeoutMs ?? process.env.HOL_GUARD_DSH_TIMEOUT_MS);
+  const timeoutMs = boundedTimeout(config.timeoutMs);
   const workspace = request.payload.cwd;
   let guard;
   try {
@@ -429,8 +429,7 @@ async function evaluatePreparedToolExecution(exec, config, request) {
     '--workspace',
     workspace,
   ];
-  const guardHome = nonEmptyString(config.guardHome) ?? nonEmptyString(process.env.HOL_GUARD_HOME);
-  if (guardHome !== null) args.push('--guard-home', guardHome);
+  if (guard.guardHome !== null) args.push('--guard-home', guard.guardHome);
 
   let result;
   try {
