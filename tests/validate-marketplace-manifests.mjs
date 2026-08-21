@@ -56,7 +56,8 @@ assert(guardSkill.includes('hol-guard'), 'Marketplace skill must delegate to the
 
 const scannerSkill = await readFile(path.join(root, 'skills/plugin-scanner/SKILL.md'), 'utf8');
 assert(scannerSkill.includes('name: plugin-scanner'), 'Scanner skill must have portable Agent Skills frontmatter');
-assert(scannerSkill.includes('pipx install hol-guard'), 'Scanner skill must install the canonical hol-guard package');
+assert(scannerSkill.includes('pipx install plugin-scanner'), 'Scanner skill must install the published plugin-scanner distribution');
+assert(!scannerSkill.includes('pipx install hol-guard'), 'Scanner skill must not claim the hol-guard runtime package provides plugin-scanner');
 assert(scannerSkill.includes('plugin-scanner scan'), 'Scanner skill must document repository scanning');
 assert(scannerSkill.includes('plugin-scanner lint'), 'Scanner skill must document skill/plugin linting');
 assert(scannerSkill.includes('Never execute code from the target repository'), 'Scanner skill must prohibit executing scanned code');
