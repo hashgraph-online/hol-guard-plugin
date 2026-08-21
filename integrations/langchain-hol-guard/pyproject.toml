@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling<1.32"]
+build-backend = "hatchling.build"
+
+[project]
+name = "langchain-hol-guard"
+version = "0.1.0"
+description = "HOL Guard pre-tool runtime enforcement for LangChain agents"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+  "hol-guard>=2.2.115",
+  "langchain>=1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=9.0.0", "pytest-asyncio>=1.0.0"]
+
+[project.urls]
+Homepage = "https://hol.org/guard"
+Repository = "https://github.com/hashgraph-online/hol-guard-plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/langchain_hol_guard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
