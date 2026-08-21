@@ -11,8 +11,13 @@ export const RUNTIME_PIN_TARGETS = Object.freeze([
   'distributions/wshobson-agents/skills/plugin-scanner/SKILL.md',
 ]);
 
+export const RUNTIME_PIN_PACKAGES = Object.freeze({
+  'distributions/wshobson-agents/README.md': 'hol-guard',
+  'distributions/wshobson-agents/skills/hol-guard/SKILL.md': 'hol-guard',
+  'distributions/wshobson-agents/skills/plugin-scanner/SKILL.md': 'plugin-scanner',
+});
+
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?![\s\S])/;
-const INSTALL_COMMAND_PATTERN = /\bpipx install hol-guard(?:==([^\s`'"\\]+))?(?=$|[\s`'"])/gm;
 const DEFAULT_FILE_OPERATIONS = Object.freeze({ rename, rm, writeFile });
 
 export function validateStableVersion(version) {
@@ -22,19 +27,32 @@ export function validateStableVersion(version) {
   return version;
 }
 
+function escapeRegularExpression(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function inspectTarget(root, relativePath) {
   const absolutePath = path.join(root, relativePath);
   const content = await readFile(absolutePath, 'utf8');
-  const matches = [...content.matchAll(INSTALL_COMMAND_PATTERN)];
+  const packageName = RUNTIME_PIN_PACKAGES[relativePath];
+  if (!packageName) {
+    throw new Error(`No package mapping exists for reviewed runtime pin target: ${relativePath}`);
+  }
+
+  const installCommandPattern = new RegExp(
+    `\\bpipx install ${escapeRegularExpression(packageName)}(?:==([^\\s\`'"\\\\]+))?(?=$|[\\s\`'"])`,
+    'gm',
+  );
+  const matches = [...content.matchAll(installCommandPattern)];
 
   if (matches.length !== 1) {
-    throw new Error(`${relativePath} must contain exactly one "pipx install hol-guard" command; found ${matches.length}`);
+    throw new Error(`${relativePath} must contain exactly one "pipx install ${packageName}" command; found ${matches.length}`);
   }
 
   const [match] = matches;
   const version = match[1];
   if (!version) {
-    throw new Error(`${relativePath} must pin HOL Guard with "pipx install hol-guard==X.Y.Z"`);
+    throw new Error(`${relativePath} must pin ${packageName} with "pipx install ${packageName}==X.Y.Z"`);
   }
   validateStableVersion(version);
 
@@ -42,6 +60,7 @@ async function inspectTarget(root, relativePath) {
     relativePath,
     absolutePath,
     content,
+    packageName,
     command: match[0],
     commandIndex: match.index,
     version,
@@ -54,7 +73,7 @@ export async function inspectHolGuardRuntimePins(root = process.cwd()) {
   const versions = [...new Set(targets.map((target) => target.version))];
 
   if (versions.length !== 1) {
-    const details = targets.map((target) => `${target.relativePath}=${target.version}`).join(', ');
+    const details = targets.map((target) => `${target.relativePath}=${target.packageName}@${target.version}`).join(', ');
     throw new Error(`HOL Guard runtime pins have drifted and will not be rewritten automatically: ${details}`);
   }
 
@@ -155,15 +174,17 @@ export async function syncHolGuardRuntimeVersion({
     throw new Error('--version X.Y.Z is required unless --check is used');
   }
 
-  const replacement = `pipx install hol-guard==${targetVersion}`;
   const updates = inspected.targets
     .filter((target) => target.version !== targetVersion)
-    .map((target) => ({
-      relativePath: target.relativePath,
-      absolutePath: target.absolutePath,
-      originalContent: target.content,
-      updatedContent: `${target.content.slice(0, target.commandIndex)}${replacement}${target.content.slice(target.commandIndex + target.command.length)}`,
-    }));
+    .map((target) => {
+      const replacement = `pipx install ${target.packageName}==${targetVersion}`;
+      return {
+        relativePath: target.relativePath,
+        absolutePath: target.absolutePath,
+        originalContent: target.content,
+        updatedContent: `${target.content.slice(0, target.commandIndex)}${replacement}${target.content.slice(target.commandIndex + target.command.length)}`,
+      };
+    });
 
   await writePinTransaction(updates, fileOperations);
 
