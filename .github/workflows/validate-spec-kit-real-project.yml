@@ -118,10 +118,38 @@ jobs:
           printf 'y\n' | specify extension add hol-guard --from "$ARCHIVE_URL"
           specify extension list | tee installed-extensions.txt
           grep -F "hol-guard" installed-extensions.txt
-          specify integration status --json | tee integration-status.json
+
+          set +e
+          specify integration status --json > integration-status.json
+          integration_status_exit="$?"
+          set -e
+          cat integration-status.json
+          python3 - "$integration_status_exit" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          reported_exit = int(sys.argv[1])
+          payload = json.loads(Path("integration-status.json").read_text(encoding="utf-8"))
+          status = payload.get("status")
+          if status not in {"ok", "warning"}:
+              raise SystemExit(f"Spec Kit integration status is not healthy: {status!r}")
+          print(f"Spec Kit integration status={status}; cli_exit={reported_exit}")
+          PY
 
           echo "Registered project files:"
-          find .agent .specify -maxdepth 5 -type f -print | sort
+          for root in .agent .specify; do
+            if [[ -e "$root" ]]; then
+              find "$root" -maxdepth 5 -type f -print
+            else
+              echo "MISSING_ROOT $root"
+            fi
+          done | sort
+
+          if [[ ! -d .agent/commands ]]; then
+            echo "Generic integration command directory was not created." >&2
+            exit 1
+          fi
 
           mapfile -t PROTECT_COMMANDS < <(
             grep -rlF --include='*.md' "hol-guard status" .agent/commands
