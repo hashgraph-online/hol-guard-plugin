@@ -7,22 +7,38 @@ on:
     paths:
       - ".github/workflows/validate-spec-kit-real-project.yml"
       - "tests/validate-spec-kit.mjs"
+      - "scripts/sync-hol-guard-runtime-version.mjs"
+      - "distributions/wshobson-agents/**"
   release:
     types:
       - published
+  workflow_run:
+    workflows:
+      - "Publish Agent Skills"
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: validate-spec-kit-real-project-${{ github.ref }}
+  group: validate-spec-kit-real-project-${{ github.event.workflow_run.id || github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     name: Exercise released extension in a real Spec Kit project
-    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -45,6 +61,18 @@ jobs:
       - name: Validate manifest and shared version
         run: node tests/validate-spec-kit.mjs
 
+      - name: Resolve reviewed HOL CLI version
+        id: cli
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node --input-type=module -e "import { inspectHolGuardRuntimePins } from './scripts/sync-hol-guard-runtime-version.mjs'; console.log((await inspectHolGuardRuntimePins(process.cwd())).version)")"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid reviewed HOL CLI version: $VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install pinned Spec Kit CLI
         shell: bash
         run: |
@@ -53,14 +81,16 @@ jobs:
             "git+https://github.com/github/spec-kit.git@ead30d9cfb99c07b3073afa73e7b40a64015f17f"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Install pinned HOL Guard and scanner CLIs
+      - name: Install reviewed HOL Guard and scanner CLIs
+        env:
+          HOL_CLI_VERSION: ${{ steps.cli.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           # HOL Guard and plugin-scanner intentionally publish as separate PyPI
           # distributions even though they share source and a release version.
-          pipx install --force "hol-guard==2.2.115"
-          pipx install --force "plugin-scanner==2.2.115"
+          pipx install --force "hol-guard==${HOL_CLI_VERSION}"
+          pipx install --force "plugin-scanner==${HOL_CLI_VERSION}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:/opt/pipx_bin:$PATH"
           command -v hol-guard
@@ -105,6 +135,7 @@ jobs:
           ARCHIVE_URL: ${{ steps.release.outputs.archive_url }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.release.outputs.tag_commit }}
+          HOL_CLI_VERSION: ${{ steps.cli.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -190,9 +221,7 @@ jobs:
           hol-guard detect --json | tee hol-guard-detect.json
 
           # Exercise both scanner operations against the exact installed
-          # extension package. Scanning only the nested skill is not a valid
-          # plugin verification target because it intentionally lacks the root
-          # plugin manifest, README, LICENSE, SECURITY.md, and .codexignore.
+          # extension package.
           SCAN_TARGET=".specify/extensions/hol-guard"
           test -f "$SCAN_TARGET/skills/plugin-scanner/SKILL.md"
           plugin-scanner lint "$SCAN_TARGET" | tee plugin-scanner-lint.txt
@@ -203,6 +232,7 @@ jobs:
             echo
             echo "- Release: \`$RELEASE_TAG\`"
             echo "- Immutable release commit: \`$RELEASE_COMMIT\`"
+            echo "- Reviewed HOL CLI version: \`$HOL_CLI_VERSION\`"
             echo "- Integration: Gemini command-backed real project"
             echo "- Rendered protect command: \`$PROTECT_COMMAND\`"
             echo "- Rendered scan command: \`$SCAN_COMMAND\`"
