@@ -7,29 +7,74 @@ on:
     paths:
       - ".github/workflows/validate-spec-kit-real-project.yml"
       - "tests/validate-spec-kit.mjs"
+      - "scripts/sync-hol-guard-runtime-version.mjs"
+      - "distributions/wshobson-agents/**"
   release:
     types:
       - published
-  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Publish Agent Skills"
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: validate-spec-kit-real-project-${{ github.ref }}
+  group: validate-spec-kit-real-project-main
   cancel-in-progress: true
 
 jobs:
   validate:
     name: Exercise released extension in a real Spec Kit project
-    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout trusted main
+      - name: Resolve trusted source commit
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_SHA: ${{ github.sha }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_SHA="$CURRENT_SHA"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}")"
+            RUN_EVENT="$(jq -r '.event' <<<"$RUN_JSON")"
+            RUN_BRANCH="$(jq -r '.head_branch' <<<"$RUN_JSON")"
+            RUN_CONCLUSION="$(jq -r '.conclusion' <<<"$RUN_JSON")"
+            SOURCE_SHA="$(jq -r '.head_sha' <<<"$RUN_JSON")"
+
+            if [[ "$RUN_EVENT" != "push" || "$RUN_BRANCH" != "main" || "$RUN_CONCLUSION" != "success" ]]; then
+              echo "Refusing to validate untrusted workflow_run source: event=$RUN_EVENT branch=$RUN_BRANCH conclusion=$RUN_CONCLUSION" >&2
+              exit 1
+            fi
+          fi
+
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid source commit: $SOURCE_SHA" >&2
+            exit 1
+          fi
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted source commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -45,6 +90,18 @@ jobs:
       - name: Validate manifest and shared version
         run: node tests/validate-spec-kit.mjs
 
+      - name: Resolve reviewed HOL CLI version
+        id: cli
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node --input-type=module -e "import { inspectHolGuardRuntimePins } from './scripts/sync-hol-guard-runtime-version.mjs'; console.log((await inspectHolGuardRuntimePins(process.cwd())).version)")"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid reviewed HOL CLI version: $VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install pinned Spec Kit CLI
         shell: bash
         run: |
@@ -53,14 +110,16 @@ jobs:
             "git+https://github.com/github/spec-kit.git@ead30d9cfb99c07b3073afa73e7b40a64015f17f"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Install pinned HOL Guard and scanner CLIs
+      - name: Install reviewed HOL Guard and scanner CLIs
+        env:
+          HOL_CLI_VERSION: ${{ steps.cli.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           # HOL Guard and plugin-scanner intentionally publish as separate PyPI
           # distributions even though they share source and a release version.
-          pipx install --force "hol-guard==2.2.115"
-          pipx install --force "plugin-scanner==2.2.115"
+          pipx install --force "hol-guard==${HOL_CLI_VERSION}"
+          pipx install --force "plugin-scanner==${HOL_CLI_VERSION}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:/opt/pipx_bin:$PATH"
           command -v hol-guard
@@ -105,6 +164,7 @@ jobs:
           ARCHIVE_URL: ${{ steps.release.outputs.archive_url }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.release.outputs.tag_commit }}
+          HOL_CLI_VERSION: ${{ steps.cli.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -190,9 +250,7 @@ jobs:
           hol-guard detect --json | tee hol-guard-detect.json
 
           # Exercise both scanner operations against the exact installed
-          # extension package. Scanning only the nested skill is not a valid
-          # plugin verification target because it intentionally lacks the root
-          # plugin manifest, README, LICENSE, SECURITY.md, and .codexignore.
+          # extension package.
           SCAN_TARGET=".specify/extensions/hol-guard"
           test -f "$SCAN_TARGET/skills/plugin-scanner/SKILL.md"
           plugin-scanner lint "$SCAN_TARGET" | tee plugin-scanner-lint.txt
@@ -203,6 +261,7 @@ jobs:
             echo
             echo "- Release: \`$RELEASE_TAG\`"
             echo "- Immutable release commit: \`$RELEASE_COMMIT\`"
+            echo "- Reviewed HOL CLI version: \`$HOL_CLI_VERSION\`"
             echo "- Integration: Gemini command-backed real project"
             echo "- Rendered protect command: \`$PROTECT_COMMAND\`"
             echo "- Rendered scan command: \`$SCAN_COMMAND\`"
