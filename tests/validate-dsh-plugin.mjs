@@ -34,7 +34,14 @@ assert(source.includes("ctx.get('approval')"), 'plugin must use the native DSH a
 assert(source.includes("'--harness',\n    'dsh'"), 'plugin must invoke the HOL Guard DSH hook');
 assert(source.includes("kind: 'deny'"), 'plugin must support fail-closed denial');
 assert(source.includes('root_tool_use_id'), 'plugin must preserve root DSH call correlation');
+assert(source.includes('lockExecutionIdentity(exec)'), 'plugin must lock reviewed DSH execution identity fields');
+assert(source.includes('changed after review'), 'plugin must deny execution drift after review');
+assert(
+  manifest.scripts?.test?.includes('tests/dsh-execution-binding.test.mjs'),
+  'DSH execution-binding regression suite must run in npm test',
+);
 assert(boundary.includes('monotonic final denial boundary'), 'DSH boundary docs must describe monotonic enforcement');
 assert(boundary.includes('sandbox-required'), 'DSH boundary docs must state the sandbox-required limitation');
 assert(boundary.includes('listener short-circuits'), 'DSH boundary docs must describe listener-bypass behavior');
+assert(boundary.includes('serialized call identity'), 'DSH boundary docs must describe execution binding');
 console.log('DSH plugin validation passed.');

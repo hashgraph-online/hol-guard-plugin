@@ -31,7 +31,7 @@
     }
   },
   "scripts": {
-    "test": "npm run test:runtime-sync && node tests/validate-plugin.mjs && node tests/validate-spec-kit.mjs && node tests/validate-marketplace-manifests.mjs && node tests/validate-clawhub.mjs && node tests/validate-wshobson-agents.mjs && node tests/validate-dsh-plugin.mjs && node --test tests/dsh-plugin.test.mjs tests/dsh-decision-precedence.test.mjs",
+    "test": "npm run test:runtime-sync && node tests/validate-plugin.mjs && node tests/validate-spec-kit.mjs && node tests/validate-marketplace-manifests.mjs && node tests/validate-clawhub.mjs && node tests/validate-wshobson-agents.mjs && node tests/validate-dsh-plugin.mjs && node --test tests/dsh-plugin.test.mjs tests/dsh-decision-precedence.test.mjs tests/dsh-execution-binding.test.mjs",
     "test:runtime-sync": "node --test tests/sync-hol-guard-runtime-version.test.mjs",
     "sync:hol-guard-runtime": "node scripts/sync-hol-guard-runtime-version.mjs",
     "test:dsh-e2e": "node tests/dsh-e2e.mjs"

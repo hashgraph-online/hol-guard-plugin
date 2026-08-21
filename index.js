@@ -10,6 +10,18 @@ const MAX_CAPTURE_BYTES = 256 * 1024;
 const MAX_PAYLOAD_BYTES = 256 * 1024;
 const TERMINATION_GRACE_MS = 250;
 const INCOMPLETE_REVIEW_REASON = 'HOL Guard review did not complete before DSH reached its monotonic tool guard.';
+const EXECUTION_MUTATION_REASON = 'HOL Guard denied this DSH tool call because its identity, workspace, or arguments changed after review.';
+const EXECUTION_IDENTITY_KEYS = Object.freeze([
+  'token',
+  'callId',
+  'rootCallId',
+  'name',
+  'arguments',
+  'agent',
+  'parent',
+  'deferContext',
+  'concludeTurn',
+]);
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -76,6 +88,36 @@ export function buildGuardPayload(exec) {
     throw new Error(`HOL Guard payload exceeds ${MAX_PAYLOAD_BYTES} bytes`);
   }
   return { payload, serialized };
+}
+
+function lockExecutionIdentity(exec) {
+  if (!exec || typeof exec !== 'object') {
+    throw new Error('DSH tool execution is not an object');
+  }
+  for (const key of EXECUTION_IDENTITY_KEYS) {
+    const descriptor = Object.getOwnPropertyDescriptor(exec, key);
+    if (descriptor === undefined) continue;
+    if (!Object.hasOwn(descriptor, 'value')) {
+      throw new Error(`DSH execution identity field "${key}" is not a data property`);
+    }
+    if (descriptor.writable === false && descriptor.configurable === false) continue;
+    Object.defineProperty(exec, key, {
+      value: descriptor.value,
+      enumerable: descriptor.enumerable,
+      writable: false,
+      configurable: false,
+    });
+  }
+}
+
+function executionMutationReason(exec, reviewedSerialized) {
+  try {
+    const current = buildGuardPayload(exec).serialized;
+    return current === reviewedSerialized ? null : EXECUTION_MUTATION_REASON;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return `HOL Guard could not revalidate the reviewed DSH tool call: ${detail}`;
+  }
 }
 
 function parseJsonObject(candidate) {
@@ -378,14 +420,7 @@ export function spawnGuardHook({ command, args, cwd, env, input, signal, timeout
   });
 }
 
-export async function evaluateToolExecution(exec, config = {}) {
-  let request;
-  try {
-    request = buildGuardPayload(exec);
-  } catch (error) {
-    return { kind: 'deny', reason: `HOL Guard could not serialize this DSH tool call: ${error instanceof Error ? error.message : String(error)}` };
-  }
-
+async function evaluatePreparedToolExecution(exec, config, request) {
   const timeoutMs = boundedTimeout(config.timeoutMs ?? process.env.HOL_GUARD_DSH_TIMEOUT_MS);
   const guard = normalizeGuardCommand(config);
   const workspace = request.payload.cwd;
@@ -430,6 +465,16 @@ export async function evaluateToolExecution(exec, config = {}) {
   return decision;
 }
 
+export async function evaluateToolExecution(exec, config = {}) {
+  let request;
+  try {
+    request = buildGuardPayload(exec);
+  } catch (error) {
+    return { kind: 'deny', reason: `HOL Guard could not serialize this DSH tool call: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  return evaluatePreparedToolExecution(exec, config, request);
+}
+
 export function apply(ctx, config = {}) {
   if (!ctx || typeof ctx.on !== 'function') {
     throw new Error('HOL Guard requires a valid DSH Cordis context.');
@@ -441,18 +486,67 @@ export function apply(ctx, config = {}) {
   const decisions = new WeakMap();
   ctx.tools.guard((exec) => {
     const decision = decisions.get(exec);
-    if (decision?.kind === 'allow') return undefined;
-    return decision?.reason ?? INCOMPLETE_REVIEW_REASON;
+    if (decision === undefined) return INCOMPLETE_REVIEW_REASON;
+    if (decision.reviewedSerialized === null) return decision.reason;
+    const mutationReason = executionMutationReason(exec, decision.reviewedSerialized);
+    if (mutationReason !== null) return mutationReason;
+    if (decision.kind === 'allow') return undefined;
+    return decision.reason;
   });
 
   ctx.on('tools/pre-execute', async (exec, next) => {
-    decisions.set(exec, { kind: 'deny', reason: INCOMPLETE_REVIEW_REASON });
-    const reviewed = await evaluateToolExecution(exec, config);
+    let request;
+    try {
+      request = buildGuardPayload(exec);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const reason = `HOL Guard could not serialize this DSH tool call: ${detail}`;
+      decisions.set(exec, { kind: 'deny', reason, reviewedSerialized: null });
+      return { kind: 'deny', reason };
+    }
+
+    decisions.set(exec, {
+      kind: 'deny',
+      reason: INCOMPLETE_REVIEW_REASON,
+      reviewedSerialized: request.serialized,
+    });
+    const reviewed = await evaluatePreparedToolExecution(exec, config, request);
     const resolved = await resolveDshApproval(ctx, exec, reviewed);
-    decisions.set(exec, resolved);
     if (resolved.kind !== 'allow') {
+      decisions.set(exec, { ...resolved, reviewedSerialized: request.serialized });
       return { kind: 'deny', reason: resolved.reason };
     }
-    return next();
+
+    const mutationBeforeDelegation = executionMutationReason(exec, request.serialized);
+    if (mutationBeforeDelegation !== null) {
+      decisions.set(exec, {
+        kind: 'deny',
+        reason: mutationBeforeDelegation,
+        reviewedSerialized: request.serialized,
+      });
+      return { kind: 'deny', reason: mutationBeforeDelegation };
+    }
+
+    try {
+      lockExecutionIdentity(exec);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const reason = `HOL Guard could not lock the reviewed DSH execution: ${detail}`;
+      decisions.set(exec, { kind: 'deny', reason, reviewedSerialized: request.serialized });
+      return { kind: 'deny', reason };
+    }
+
+    decisions.set(exec, { ...resolved, reviewedSerialized: request.serialized });
+    const downstream = await next();
+    const mutationAfterDelegation = executionMutationReason(exec, request.serialized);
+    if (mutationAfterDelegation !== null) {
+      decisions.set(exec, {
+        kind: 'deny',
+        reason: mutationAfterDelegation,
+        reviewedSerialized: request.serialized,
+      });
+      return { kind: 'deny', reason: mutationAfterDelegation };
+    }
+    return downstream;
   });
 }
