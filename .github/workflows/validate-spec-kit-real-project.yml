@@ -111,39 +111,35 @@ jobs:
           trap 'rm -rf "$workdir"' EXIT
           cd "$workdir"
 
+          # Generic is intentionally excluded from Spec Kit's extension command
+          # registrar. Use a supported command-backed integration while bypassing
+          # the external agent binary check so this tests Spec Kit itself.
           specify init --here --force --non-interactive --ignore-agent-tools \
-            --integration generic \
-            --integration-options="--commands-dir .agent/commands"
+            --integration gemini
 
           printf 'y\n' | specify extension add hol-guard --from "$ARCHIVE_URL"
           specify extension list | tee installed-extensions.txt
           grep -F "hol-guard" installed-extensions.txt
 
-          # Spec Kit intentionally registers installed extension commands when
-          # an integration is activated. Re-using the already-active generic
-          # integration is the documented rescaffold path after installation.
-          specify integration use generic
+          # Re-activation is the documented rescaffold path for all enabled
+          # extension commands and proves the installed package is repeatable.
+          specify integration use gemini
 
-          set +e
           specify integration status --json > integration-status.json
-          integration_status_exit="$?"
-          set -e
           cat integration-status.json
-          python3 - "$integration_status_exit" <<'PY'
+          python3 <<'PY'
           import json
-          import sys
           from pathlib import Path
 
-          reported_exit = int(sys.argv[1])
           payload = json.loads(Path("integration-status.json").read_text(encoding="utf-8"))
           status = payload.get("status")
           if status not in {"ok", "warning"}:
               raise SystemExit(f"Spec Kit integration status is not healthy: {status!r}")
-          print(f"Spec Kit integration status={status}; cli_exit={reported_exit}")
+          print(f"Spec Kit integration status={status}")
           PY
 
           echo "Registered project files:"
-          for root in .agent .specify; do
+          for root in .gemini .specify; do
             if [[ -e "$root" ]]; then
               find "$root" -maxdepth 5 -type f -print
             else
@@ -151,16 +147,17 @@ jobs:
             fi
           done | sort
 
-          if [[ ! -d .agent/commands ]]; then
-            echo "Generic integration command directory was not created." >&2
+          COMMAND_ROOT=".gemini/commands"
+          if [[ ! -d "$COMMAND_ROOT" ]]; then
+            echo "Gemini command directory was not created." >&2
             exit 1
           fi
 
           mapfile -t PROTECT_COMMANDS < <(
-            grep -rlF --include='*.md' "hol-guard status" .agent/commands
+            grep -rlF "hol-guard status" "$COMMAND_ROOT"
           )
           mapfile -t SCAN_COMMANDS < <(
-            grep -rlF --include='*.md' "plugin-scanner lint" .agent/commands
+            grep -rlF "plugin-scanner lint" "$COMMAND_ROOT"
           )
 
           if [[ "${#PROTECT_COMMANDS[@]}" -ne 1 ]]; then
@@ -201,7 +198,7 @@ jobs:
             echo
             echo "- Release: \`$RELEASE_TAG\`"
             echo "- Immutable release commit: \`$RELEASE_COMMIT\`"
-            echo "- Integration: generic commands directory at \`.agent/commands\`"
+            echo "- Integration: Gemini command-backed real project"
             echo "- Rendered protect command: \`$PROTECT_COMMAND\`"
             echo "- Rendered scan command: \`$SCAN_COMMAND\`"
             echo "- Protect recipe exercised: \`hol-guard status\`, \`hol-guard detect --json\`"
