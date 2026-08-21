@@ -117,7 +117,8 @@ jobs:
             --password "${PYPI_API_TOKEN}" \
             "${RUNNER_TEMP}/langchain-hol-guard-dist"/*
 
-      - name: Verify normal installability
+      - name: Verify newly published version is normally installable
+        if: steps.pypi.outputs.exists != 'true'
         run: |
           set -euo pipefail
           python3 -m venv "${RUNNER_TEMP}/langchain-hol-guard-pypi-verify"
@@ -145,12 +146,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
+          VERSION_ALREADY_EXISTS: ${{ steps.pypi.outputs.exists }}
         run: |
           state="error"
           description="PyPI publication or install verification ${JOB_STATUS}"
           if [ "${JOB_STATUS}" = "success" ]; then
             state="success"
-            description="PyPI ${PACKAGE_NAME} ${PACKAGE_VERSION} install verified"
+            if [ "${VERSION_ALREADY_EXISTS}" = "true" ]; then
+              description="PyPI ${PACKAGE_NAME} ${PACKAGE_VERSION} already published"
+            else
+              description="PyPI ${PACKAGE_NAME} ${PACKAGE_VERSION} install verified"
+            fi
           elif [ "${JOB_STATUS}" = "cancelled" ]; then
             description="PyPI publication or install verification cancelled"
           fi
