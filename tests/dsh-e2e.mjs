@@ -184,8 +184,10 @@ async function startMockProvider({ command }) {
 }
 
 async function createFakeGuard(tempDir, logPath) {
-  const script = path.join(tempDir, 'fake-hol-guard.mjs');
-  await writeFile(script, `#!/usr/bin/env node
+  const binDir = path.join(tempDir, 'guard-bin');
+  await mkdir(binDir, { recursive: true });
+  const script = path.join(binDir, 'hol-guard');
+  await writeFile(script, `#!${process.execPath}
 import { appendFileSync } from 'node:fs';
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -204,12 +206,13 @@ console.log(JSON.stringify({
 process.exitCode = 2;
 `, 'utf8');
   await chmod(script, 0o755);
-  return script;
+  return { binDir, script };
 }
 
 async function runScenario({ protectedByGuard }) {
   const scenario = protectedByGuard ? 'protected' : 'control';
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), protectedByGuard ? 'dsh-guard-' : 'dsh-control-'));
+  const prefix = protectedByGuard ? '.dsh-guard-' : '.dsh-control-';
+  const tempDir = await mkdtemp(path.join(os.homedir(), prefix));
   const dshHome = path.join(tempDir, '.dsh');
   const dshConfigDir = path.join(tempDir, 'config');
   const workspace = path.join(tempDir, 'workspace');
@@ -221,14 +224,21 @@ async function runScenario({ protectedByGuard }) {
   const {
     HOL_GUARD_COMMAND: _guardCommand,
     HOL_GUARD_DSH_TIMEOUT_MS: _guardTimeout,
+    HOL_GUARD_HOME: _guardHome,
     DSH_HOME: _dshHome,
     DSH_CONFIG_DIR: _dshConfigDir,
+    DSH_PERMISSION_MODE: _dshPermissionMode,
     ...baseEnv
   } = process.env;
   const env = {
     ...baseEnv,
     DSH_HOME: dshHome,
     DSH_CONFIG_DIR: dshConfigDir,
+    // This test isolates the HOL Guard pre-tool boundary. DSH's documented
+    // danger-full-access mode bypasses only its own file sandbox so the
+    // unprotected control must execute; the protected case must still be
+    // stopped by HOL Guard before the bash side effect.
+    DSH_PERMISSION_MODE: 'danger-full-access',
     DEEPSEEK_BASE_URL: provider.baseUrl,
     DEEPSEEK_API_KEY: 'mock-key',
     NO_COLOR: '1',
@@ -236,9 +246,8 @@ async function runScenario({ protectedByGuard }) {
 
   try {
     if (protectedByGuard) {
-      const guardCommand = await createFakeGuard(tempDir, guardLog);
-      env.HOL_GUARD_COMMAND = guardCommand;
-      env.HOL_GUARD_DSH_TIMEOUT_MS = '5000';
+      const fakeGuard = await createFakeGuard(tempDir, guardLog);
+      env.PATH = `${fakeGuard.binDir}${path.delimiter}${baseEnv.PATH ?? ''}`;
       const install = await runDsh(['plugin', '--profile', 'headless', 'add', root], { env, cwd: workspace });
       assert.equal(install.code, 0, `DSH plugin install failed:\n${install.stdout}\n${install.stderr}`);
       const dumped = await runDsh(['--profile', 'headless', '--dump-config'], { env, cwd: workspace });
