@@ -6,12 +6,11 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
-from pydantic_ai._run_context import AgentDepsT, RunContext
-from pydantic_ai.exceptions import ApprovalRequired
-from pydantic_ai.toolsets.abstract import ToolsetTool
-from pydantic_ai.toolsets.wrapper import WrapperToolset
+from pydantic_ai import ApprovalRequired, RunContext, ToolsetTool, WrapperToolset
+
+AgentDepsT = TypeVar("AgentDepsT")
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,9 +120,14 @@ def evaluate_with_hol_guard(
     command.append("--json")
 
     try:
+        serialized_payload = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+    except (TypeError, ValueError) as exc:
+        raise HolGuardUnavailable("HOL Guard decision unavailable: tool arguments are not JSON serializable") from exc
+
+    try:
         completed = subprocess.run(
             command,
-            input=json.dumps(payload, ensure_ascii=True, separators=(",", ":")),
+            input=serialized_payload,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
@@ -136,7 +140,14 @@ def evaluate_with_hol_guard(
     if parsed is None:
         detail = completed.stderr.strip() or f"exit status {completed.returncode}"
         raise HolGuardUnavailable(f"HOL Guard decision unavailable: {detail}")
-    return _classify_guard_payload(parsed)
+
+    decision = _classify_guard_payload(parsed)
+    if decision.action == "allow" and completed.returncode != 0:
+        detail = completed.stderr.strip() or f"exit status {completed.returncode}"
+        raise HolGuardUnavailable(
+            f"HOL Guard allow decision rejected because the process exited non-zero: {detail}"
+        )
+    return decision
 
 
 @dataclass
@@ -169,7 +180,8 @@ class HolGuardToolset(WrapperToolset[AgentDepsT]):
 
         if decision.action == "review":
             if not ctx.tool_call_approved:
-                raise ApprovalRequired
+                metadata = {"hol_guard_reason": decision.reason} if decision.reason else None
+                raise ApprovalRequired(metadata=metadata)
             return await super().call_tool(name, tool_args, ctx, tool)
 
         if decision.action == "deny":
