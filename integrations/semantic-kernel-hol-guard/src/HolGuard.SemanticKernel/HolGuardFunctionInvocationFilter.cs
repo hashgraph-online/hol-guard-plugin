@@ -110,49 +110,67 @@ public sealed class CliHolGuardDecisionProvider : IHolGuardDecisionProvider
         startInfo.ArgumentList.Add("--json");
 
         using var process = new Process { StartInfo = startInfo };
+        using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        executionCts.CancelAfter(_options.Timeout);
+
+        Task<string>? stdoutTask = null;
+        Task<string>? stderrTask = null;
         try
         {
             if (!process.Start())
             {
                 throw new HolGuardUnavailableException("HOL Guard decision unavailable: process did not start.");
             }
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            throw new HolGuardUnavailableException($"HOL Guard decision unavailable: {ex.Message}", ex);
-        }
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.StandardInput.WriteAsync(serialized.AsMemory(), cancellationToken);
-        await process.StandardInput.FlushAsync(cancellationToken);
-        process.StandardInput.Close();
+            stdoutTask = process.StandardOutput.ReadToEndAsync(executionCts.Token);
+            stderrTask = process.StandardError.ReadToEndAsync(executionCts.Token);
+            await process.StandardInput.WriteAsync(serialized.AsMemory(), executionCts.Token).ConfigureAwait(false);
+            await process.StandardInput.FlushAsync(executionCts.Token).ConfigureAwait(false);
+            process.StandardInput.Close();
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(_options.Timeout);
-        try
-        {
-            await process.WaitForExitAsync(timeoutCts.Token);
+            await process.WaitForExitAsync(executionCts.Token).ConfigureAwait(false);
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            var stderr = await stderrTask.ConfigureAwait(false);
+            var decision = ParseDecision(stdout);
+
+            if (decision.Action == HolGuardAction.Allow && process.ExitCode != 0)
+            {
+                var detail = string.IsNullOrWhiteSpace(stderr) ? $"exit status {process.ExitCode}" : stderr.Trim();
+                throw new HolGuardUnavailableException(
+                    $"HOL Guard allow decision rejected because the process exited non-zero: {detail}");
+            }
+
+            return decision;
         }
-        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             TryKill(process);
+            executionCts.Cancel();
+            await ObserveIoTasksAsync(stdoutTask, stderrTask).ConfigureAwait(false);
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            TryKill(process);
+            executionCts.Cancel();
+            await ObserveIoTasksAsync(stdoutTask, stderrTask).ConfigureAwait(false);
             throw new HolGuardUnavailableException(
                 $"HOL Guard decision unavailable: timed out after {_options.Timeout.TotalSeconds:0.###}s.", ex);
         }
-
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-        var decision = ParseDecision(stdout);
-
-        if (decision.Action == HolGuardAction.Allow && process.ExitCode != 0)
+        catch (HolGuardUnavailableException)
         {
-            var detail = string.IsNullOrWhiteSpace(stderr) ? $"exit status {process.ExitCode}" : stderr.Trim();
-            throw new HolGuardUnavailableException(
-                $"HOL Guard allow decision rejected because the process exited non-zero: {detail}");
+            TryKill(process);
+            executionCts.Cancel();
+            await ObserveIoTasksAsync(stdoutTask, stderrTask).ConfigureAwait(false);
+            throw;
         }
-
-        return decision;
+        catch (Exception ex)
+        {
+            TryKill(process);
+            executionCts.Cancel();
+            await ObserveIoTasksAsync(stdoutTask, stderrTask).ConfigureAwait(false);
+            throw new HolGuardUnavailableException("HOL Guard decision unavailable.", ex);
+        }
     }
 
     private static HolGuardDecision ParseDecision(string stdout)
@@ -248,6 +266,33 @@ public sealed class CliHolGuardDecisionProvider : IHolGuardDecisionProvider
         return true;
     }
 
+    private static async Task ObserveIoTasksAsync(Task<string>? stdoutTask, Task<string>? stderrTask)
+    {
+        if (stdoutTask is not null)
+        {
+            try
+            {
+                await stdoutTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Cancellation/stream teardown is expected after process termination.
+            }
+        }
+
+        if (stderrTask is not null)
+        {
+            try
+            {
+                await stderrTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Cancellation/stream teardown is expected after process termination.
+            }
+        }
+    }
+
     private static void TryKill(Process process)
     {
         try
@@ -263,6 +308,9 @@ public sealed class CliHolGuardDecisionProvider : IHolGuardDecisionProvider
 
 public sealed class HolGuardFunctionInvocationFilter : IFunctionInvocationFilter
 {
+    private const string GuardUnavailableReason = "HOL Guard is unavailable; function execution was blocked.";
+    private const string ApprovalUnavailableReason = "HOL Guard approval is unavailable; function execution was blocked.";
+
     private readonly IHolGuardDecisionProvider _decisionProvider;
     private readonly IHolGuardApprovalHandler? _approvalHandler;
 
@@ -289,11 +337,17 @@ public sealed class HolGuardFunctionInvocationFilter : IFunctionInvocationFilter
         HolGuardDecision decision;
         try
         {
-            decision = await _decisionProvider.EvaluateAsync(toolName, arguments).ConfigureAwait(false);
+            decision = await _decisionProvider
+                .EvaluateAsync(toolName, arguments, context.CancellationToken)
+                .ConfigureAwait(false);
         }
-        catch (HolGuardUnavailableException ex)
+        catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
         {
-            Block(context, toolName, "unavailable", ex.Message);
+            throw;
+        }
+        catch (Exception)
+        {
+            Block(context, toolName, "unavailable", GuardUnavailableReason);
             return;
         }
 
@@ -305,9 +359,24 @@ public sealed class HolGuardFunctionInvocationFilter : IFunctionInvocationFilter
 
         if (decision.Action == HolGuardAction.Review)
         {
-            var approved = _approvalHandler is not null
-                && await _approvalHandler.ApproveAsync(
-                    new HolGuardReviewRequest(toolName, arguments, decision.Reason)).ConfigureAwait(false);
+            bool approved;
+            try
+            {
+                approved = _approvalHandler is not null
+                    && await _approvalHandler.ApproveAsync(
+                        new HolGuardReviewRequest(toolName, arguments, decision.Reason),
+                        context.CancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                Block(context, toolName, "unavailable", ApprovalUnavailableReason);
+                return;
+            }
+
             if (approved)
             {
                 await next(context).ConfigureAwait(false);
