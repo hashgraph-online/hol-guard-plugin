@@ -119,6 +119,11 @@ jobs:
           specify extension list | tee installed-extensions.txt
           grep -F "hol-guard" installed-extensions.txt
 
+          # Spec Kit intentionally registers installed extension commands when
+          # an integration is activated. Re-using the already-active generic
+          # integration is the documented rescaffold path after installation.
+          specify integration use generic
+
           set +e
           specify integration status --json > integration-status.json
           integration_status_exit="$?"
