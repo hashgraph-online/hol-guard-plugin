@@ -8,6 +8,7 @@ const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf
 const pluginManifest = JSON.parse(await readFile(path.join(root, 'dsh.plugin.json'), 'utf8'));
 const patch = await readFile(path.join(root, 'cordis.patch.yml'), 'utf8');
 const source = await readFile(path.join(root, 'index.js'), 'utf8');
+const processSource = await readFile(path.join(root, 'dsh-process.js'), 'utf8');
 const boundary = await readFile(path.join(root, 'docs/dsh-security-boundary.md'), 'utf8');
 
 function assert(condition, message) {
@@ -15,8 +16,10 @@ function assert(condition, message) {
 }
 
 await access(path.join(root, 'index.js'), constants.R_OK);
+await access(path.join(root, 'dsh-process.js'), constants.R_OK);
 assert(manifest.type === 'module', 'DSH plugin must be ESM');
 assert(manifest.main === 'index.js', 'DSH plugin main must be index.js');
+assert(manifest.files?.includes('dsh-process.js'), 'DSH process trust module must ship in the package');
 assert(manifest.dsh?.bundle?.patch === './cordis.patch.yml', 'DSH bundle patch metadata is missing');
 assert(manifest.keywords?.includes('dsh-plugin'), 'package keywords must include dsh-plugin');
 assert(pluginManifest.version === manifest.version, 'DSH plugin version must match package version');
@@ -36,12 +39,21 @@ assert(source.includes("kind: 'deny'"), 'plugin must support fail-closed denial'
 assert(source.includes('root_tool_use_id'), 'plugin must preserve root DSH call correlation');
 assert(source.includes('lockExecutionIdentity(exec)'), 'plugin must lock reviewed DSH execution identity fields');
 assert(source.includes('changed after review'), 'plugin must deny execution drift after review');
+assert(source.includes('prepareGuardProcess(config, workspace)'), 'plugin must validate the Guard subprocess trust boundary');
+assert(processSource.includes('sanitized absolute PATH'), 'Guard process module must use a sanitized absolute PATH');
+assert(processSource.includes('PYTHONNOUSERSITE'), 'Guard process module must disable Python user-site imports');
+assert(processSource.includes('LD_PRELOAD'), 'Guard process module must scrub native loader injection');
 assert(
   manifest.scripts?.test?.includes('tests/dsh-execution-binding.test.mjs'),
   'DSH execution-binding regression suite must run in npm test',
+);
+assert(
+  manifest.scripts?.test?.includes('tests/dsh-process-trust.test.mjs'),
+  'DSH process-trust regression suite must run in npm test',
 );
 assert(boundary.includes('monotonic final denial boundary'), 'DSH boundary docs must describe monotonic enforcement');
 assert(boundary.includes('sandbox-required'), 'DSH boundary docs must state the sandbox-required limitation');
 assert(boundary.includes('listener short-circuits'), 'DSH boundary docs must describe listener-bypass behavior');
 assert(boundary.includes('serialized call identity'), 'DSH boundary docs must describe execution binding');
+assert(boundary.includes('sanitized absolute PATH'), 'DSH boundary docs must describe executable trust');
 console.log('DSH plugin validation passed.');

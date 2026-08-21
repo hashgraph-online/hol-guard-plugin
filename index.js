@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 
+import { prepareGuardProcess } from './dsh-process.js';
+
 export const name = 'hol-guard-plugin';
 export const inject = ['tools'];
 
@@ -31,18 +33,6 @@ function boundedTimeout(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_TIMEOUT_MS;
   return Math.min(MAX_TIMEOUT_MS, Math.max(250, Math.floor(parsed)));
-}
-
-function normalizeGuardCommand(config = {}) {
-  const configured = config.command;
-  if (Array.isArray(configured) && configured.length > 0 && configured.every((part) => typeof part === 'string' && part.length > 0)) {
-    return { executable: configured[0], prefixArgs: configured.slice(1) };
-  }
-  if (typeof configured === 'string' && configured.trim()) {
-    return { executable: configured.trim(), prefixArgs: [] };
-  }
-  const fromEnvironment = nonEmptyString(process.env.HOL_GUARD_COMMAND);
-  return { executable: fromEnvironment ?? 'hol-guard', prefixArgs: [] };
 }
 
 function jsonSafe(value, seen = new WeakSet(), depth = 0) {
@@ -422,8 +412,14 @@ export function spawnGuardHook({ command, args, cwd, env, input, signal, timeout
 
 async function evaluatePreparedToolExecution(exec, config, request) {
   const timeoutMs = boundedTimeout(config.timeoutMs ?? process.env.HOL_GUARD_DSH_TIMEOUT_MS);
-  const guard = normalizeGuardCommand(config);
   const workspace = request.payload.cwd;
+  let guard;
+  try {
+    guard = prepareGuardProcess(config, workspace);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { kind: 'deny', reason: `HOL Guard process trust validation failed closed: ${detail}` };
+  }
   const args = [
     ...guard.prefixArgs,
     'guard',
@@ -443,7 +439,7 @@ async function evaluatePreparedToolExecution(exec, config, request) {
       command: guard.executable,
       args,
       cwd: workspace,
-      env: { ...process.env, ...(config.env ?? {}) },
+      env: guard.environment,
       input: request.serialized,
       signal: exec?.signal,
       timeoutMs,
