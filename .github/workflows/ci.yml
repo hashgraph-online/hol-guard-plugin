@@ -29,6 +29,14 @@ jobs:
       - name: Validate manifests, assets, and DSH gate
         run: npm test
 
+      - name: Test Pydantic AI HOL Guard integration
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/pydantic-ai-hol-guard-venv"
+          source "${RUNNER_TEMP}/pydantic-ai-hol-guard-venv/bin/activate"
+          python -m pip install --upgrade pip
+          python -m pip install "./integrations/pydantic-ai-hol-guard[test]"
+          python -m pytest -q integrations/pydantic-ai-hol-guard/tests
+
       - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
