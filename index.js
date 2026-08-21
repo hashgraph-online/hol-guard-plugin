@@ -162,19 +162,25 @@ function signalReason(signal, kind) {
   return hookReason ?? responseReason ?? reviewHint;
 }
 
+function signalMatchesKind(signal, kind) {
+  if (kind === 'deny') return signal.hardDeny;
+  if (kind === 'ask') return signal.requiresApproval;
+  return signal.allows;
+}
+
+function defaultDecisionReason(kind) {
+  if (kind === 'ask') return 'HOL Guard requires approval for this DSH tool call.';
+  if (kind === 'deny') return 'HOL Guard denied this DSH tool call.';
+  return 'HOL Guard allowed this DSH tool call.';
+}
+
 function reasonFromSignals(signals, kind) {
-  const matching = signals.filter((signal) => (
-    kind === 'deny' ? signal.hardDeny : kind === 'ask' ? signal.requiresApproval : signal.allows
-  ));
+  const matching = signals.filter((signal) => signalMatchesKind(signal, kind));
   for (const signal of [...matching].reverse()) {
     const reason = signalReason(signal, kind);
     if (reason !== null) return reason;
   }
-  return kind === 'ask'
-    ? 'HOL Guard requires approval for this DSH tool call.'
-    : kind === 'deny'
-      ? 'HOL Guard denied this DSH tool call.'
-      : 'HOL Guard allowed this DSH tool call.';
+  return defaultDecisionReason(kind);
 }
 
 export function decisionFromGuardResponse(payload) {
