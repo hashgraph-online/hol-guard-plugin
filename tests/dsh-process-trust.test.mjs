@@ -40,6 +40,20 @@ function withProcessPath(value, callback) {
     });
 }
 
+async function expectedChildPath(...additionalEntries) {
+  const runtimeDirectory = path.dirname(await realpath(process.execPath));
+  const entries = [runtimeDirectory, ...additionalEntries.map((entry) => path.resolve(entry))];
+  const seen = new Set();
+  return entries
+    .filter((entry) => {
+      const identity = process.platform === 'win32' ? entry.toLowerCase() : entry;
+      if (seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    })
+    .join(path.delimiter);
+}
+
 test('Guard child environment is allowlisted and does not inherit secrets or injection controls', async () => {
   const root = await mkdtemp(path.join(os.homedir(), '.hol-guard-env-trust-'));
   const workspace = path.join(root, 'workspace');
@@ -62,7 +76,7 @@ test('Guard child environment is allowlisted and does not inherit secrets or inj
       VIRTUAL_ENV: '/tmp/attacker-venv',
     }, workspace);
 
-    assert.equal(environment.PATH, await realpath(trustedBin));
+    assert.equal(environment.PATH, await expectedChildPath(await realpath(trustedBin)));
     assert.equal(environment.LANG, 'C.UTF-8');
     for (const name of [
       'AWS_SECRET_ACCESS_KEY',
@@ -90,6 +104,24 @@ test('Guard child environment is allowlisted and does not inherit secrets or inj
   }
 });
 
+test('the already-running DSH Node runtime is the first child PATH trust anchor', async () => {
+  const root = await mkdtemp(path.join(os.homedir(), '.hol-guard-runtime-trust-'));
+  const workspace = path.join(root, 'workspace');
+  try {
+    await mkdir(workspace, { recursive: true });
+    const environment = buildGuardEnvironment({ PATH: '' }, workspace);
+    const [runtimeDirectory] = environment.PATH.split(path.delimiter);
+    const resolvedRuntime = await realpath(process.execPath);
+    assert.equal(runtimeDirectory, path.dirname(resolvedRuntime));
+    assert.equal(
+      await realpath(path.join(runtimeDirectory, path.basename(resolvedRuntime))),
+      resolvedRuntime,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('default PATH resolution skips workspace and temporary candidates and pins an owner-safe absolute executable', async () => {
   const root = await mkdtemp(path.join(os.homedir(), '.hol-guard-path-trust-'));
   const workspace = path.join(root, 'workspace');
@@ -105,7 +137,7 @@ test('default PATH resolution skips workspace and temporary candidates and pins 
       async () => {
         const prepared = prepareGuardProcess({}, workspace);
         assert.equal(prepared.executable, await realpath(trusted));
-        assert.equal(prepared.environment.PATH, await realpath(trustedBin));
+        assert.equal(prepared.environment.PATH, await expectedChildPath(await realpath(trustedBin)));
       },
     );
   } finally {
@@ -165,7 +197,7 @@ test('runner injection receives the same minimal environment without requiring a
     }, workspace);
 
     assert.equal(prepared.executable, 'not-installed-in-test');
-    assert.equal(prepared.environment.PATH, await realpath(trustedBin));
+    assert.equal(prepared.environment.PATH, await expectedChildPath(await realpath(trustedBin)));
     assert.equal(prepared.environment.OPENAI_API_KEY, undefined);
     assert.equal(prepared.environment.PYTHONPATH, undefined);
     assert.equal(prepared.environment.PYTHONNOUSERSITE, '1');

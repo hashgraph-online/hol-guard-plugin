@@ -43,8 +43,9 @@ assert(source.includes('prepareGuardProcess(config, workspace)'), 'plugin must v
 assert(!source.includes('process.env.HOL_GUARD_HOME'), 'plugin must not trust Guard home from the inherited environment');
 assert(!source.includes('process.env.HOL_GUARD_COMMAND'), 'plugin must not trust Guard command from the inherited environment');
 assert(processSource.includes('SAFE_SCALAR_ENVIRONMENT'), 'Guard process module must build an environment allowlist');
+assert(processSource.includes('currentRuntimeDirectory'), 'Guard process module must anchor child interpreters to the running DSH Node runtime');
 assert(processSource.includes('sanitized owner-safe absolute PATH'), 'Guard process module must use an owner-safe absolute PATH');
-assert(processSource.includes('assertTrustedPathChain'), 'Guard process module must validate executable ownership and mode');
+assert(processSource.includes('assertTrustedPathChain'), 'Guard process module must validate Guard executable ownership and mode');
 assert(processSource.includes('PYTHONNOUSERSITE'), 'Guard process module must disable Python user-site imports');
 assert(processSource.includes('GIT_CONFIG_GLOBAL'), 'Guard process module must isolate inherited Git configuration');
 assert(
@@ -60,5 +61,6 @@ assert(boundary.includes('sandbox-required'), 'DSH boundary docs must state the 
 assert(boundary.includes('listener short-circuits'), 'DSH boundary docs must describe listener-bypass behavior');
 assert(boundary.includes('serialized call identity'), 'DSH boundary docs must describe execution binding');
 assert(boundary.includes('minimal allowlisted environment'), 'DSH boundary docs must describe environment isolation');
-assert(boundary.includes('owner-safe absolute PATH'), 'DSH boundary docs must describe executable trust');
+assert(boundary.includes('owner-safe absolute PATH'), 'DSH boundary docs must describe Guard executable trust');
+assert(boundary.includes('already-running DSH Node runtime'), 'DSH boundary docs must describe the active runtime trust anchor');
 console.log('DSH plugin validation passed.');

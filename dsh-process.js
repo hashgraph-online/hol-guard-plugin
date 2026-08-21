@@ -99,6 +99,26 @@ function verifiedDirectory(candidate, workspace, { allowTemporary = false } = {}
   return resolved;
 }
 
+function pathIdentity(value) {
+  return process.platform === 'win32' ? value.toLowerCase() : value;
+}
+
+function currentRuntimeDirectory(workspace) {
+  const runtimeExecutable = realpathSync(process.execPath);
+  if (withinPath(workspace, runtimeExecutable)) {
+    throw new Error(`the running DSH Node executable resolves inside the active workspace: ${runtimeExecutable}`);
+  }
+  if (withinPath(os.tmpdir(), runtimeExecutable)) {
+    throw new Error(`the running DSH Node executable resolves inside the system temporary root: ${runtimeExecutable}`);
+  }
+  const stat = statSync(runtimeExecutable);
+  if (!stat.isFile()) {
+    throw new Error(`the running DSH Node executable is not a regular file: ${runtimeExecutable}`);
+  }
+  accessSync(runtimeExecutable, process.platform === 'win32' ? fsConstants.F_OK : fsConstants.X_OK);
+  return path.dirname(runtimeExecutable);
+}
+
 function sanitizedPath(rawPath, workspace) {
   const safeEntries = [];
   const seen = new Set();
@@ -110,12 +130,26 @@ function sanitizedPath(rawPath, workspace) {
     } catch {
       continue;
     }
-    const identity = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+    const identity = pathIdentity(resolved);
     if (seen.has(identity)) continue;
     seen.add(identity);
     safeEntries.push(resolved);
   }
-  return safeEntries.join(path.delimiter);
+  return safeEntries;
+}
+
+function childPath(rawPath, workspace) {
+  const runtimeDirectory = currentRuntimeDirectory(workspace);
+  const entries = [runtimeDirectory, ...sanitizedPath(rawPath, workspace)];
+  const seen = new Set();
+  return entries
+    .filter((entry) => {
+      const identity = pathIdentity(entry);
+      if (seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    })
+    .join(path.delimiter);
 }
 
 function systemUser(workspace) {
@@ -167,7 +201,7 @@ export function buildGuardEnvironment(overrides = {}, workspace = process.cwd())
   const environment = {};
   const user = systemUser(workspace);
   const temporaryDirectory = safeTemporaryDirectory(sourceEnvironment, workspace, user.home);
-  const cleanPath = sanitizedPath(environmentValue(sourceEnvironment, 'PATH'), workspace);
+  const cleanPath = childPath(environmentValue(sourceEnvironment, 'PATH'), workspace);
 
   setEnvironmentValue(environment, 'PATH', cleanPath);
   setEnvironmentValue(environment, 'HOME', user.home);
@@ -252,8 +286,9 @@ function resolveFromPath(requestedExecutable, environment, workspace) {
       try {
         return verifiedExecutable(candidate, workspace);
       } catch {
-        // Continue through the sanitized, owner-safe absolute PATH. Missing,
-        // non-file, non-executable, temporary, and untrusted candidates are skipped.
+        // Continue through the sanitized PATH. The running Node directory is
+        // available to child shebangs but still cannot supply hol-guard unless
+        // its candidate independently passes the owner/mode executable checks.
       }
     }
   }
