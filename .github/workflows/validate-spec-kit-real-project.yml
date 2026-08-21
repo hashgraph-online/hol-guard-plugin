@@ -22,10 +22,11 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: validate-spec-kit-real-project-${{ github.event.workflow_run.id || github.ref }}
+  group: validate-spec-kit-real-project-main
   cancel-in-progress: true
 
 jobs:
@@ -41,10 +42,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout trusted main
+      - name: Resolve trusted source commit
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_SHA: ${{ github.sha }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_SHA="$CURRENT_SHA"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKFLOW_RUN_ID}")"
+            RUN_EVENT="$(jq -r '.event' <<<"$RUN_JSON")"
+            RUN_BRANCH="$(jq -r '.head_branch' <<<"$RUN_JSON")"
+            RUN_CONCLUSION="$(jq -r '.conclusion' <<<"$RUN_JSON")"
+            SOURCE_SHA="$(jq -r '.head_sha' <<<"$RUN_JSON")"
+
+            if [[ "$RUN_EVENT" != "push" || "$RUN_BRANCH" != "main" || "$RUN_CONCLUSION" != "success" ]]; then
+              echo "Refusing to validate untrusted workflow_run source: event=$RUN_EVENT branch=$RUN_BRANCH conclusion=$RUN_CONCLUSION" >&2
+              exit 1
+            fi
+          fi
+
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid source commit: $SOURCE_SHA" >&2
+            exit 1
+          fi
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted source commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
 
