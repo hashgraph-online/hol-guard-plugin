@@ -6,13 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const RUNTIME_PIN_TARGETS = Object.freeze([
-  'distributions/wshobson-agents/README.md',
   'distributions/wshobson-agents/skills/hol-guard/SKILL.md',
   'distributions/wshobson-agents/skills/plugin-scanner/SKILL.md',
 ]);
 
 export const RUNTIME_PIN_PACKAGES = Object.freeze({
-  'distributions/wshobson-agents/README.md': 'hol-guard',
   'distributions/wshobson-agents/skills/hol-guard/SKILL.md': 'hol-guard',
   'distributions/wshobson-agents/skills/plugin-scanner/SKILL.md': 'plugin-scanner',
 });
