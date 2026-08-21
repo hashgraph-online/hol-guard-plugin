@@ -61,6 +61,7 @@ jobs:
           fi
 
       - name: Build and validate distribution
+        id: build
         run: |
           set -euo pipefail
           python3 -m pip install --upgrade pip
@@ -102,12 +103,14 @@ jobs:
           PY
 
       - name: Require configured PyPI publisher
+        id: publisher_gate
         if: steps.pypi.outputs.exists != 'true' && env.PYPI_API_TOKEN == ''
         run: |
           echo "PYPI_API_TOKEN is not available to this repository; refusing to improvise package publication." >&2
           exit 1
 
       - name: Publish to PyPI
+        id: publish
         if: steps.pypi.outputs.exists != 'true' && env.PYPI_API_TOKEN != ''
         run: |
           set -euo pipefail
@@ -118,6 +121,7 @@ jobs:
             "${RUNNER_TEMP}/langchain-hol-guard-dist"/*
 
       - name: Verify newly published version is normally installable
+        id: verify
         if: steps.pypi.outputs.exists != 'true'
         run: |
           set -euo pipefail
@@ -147,9 +151,32 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
           VERSION_ALREADY_EXISTS: ${{ steps.pypi.outputs.exists }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PYPI_CHECK_OUTCOME: ${{ steps.pypi.outcome }}
+          PUBLISHER_GATE_OUTCOME: ${{ steps.publisher_gate.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
+          post_status() {
+            local state="$1"
+            local context="$2"
+            local description="$3"
+            if ! curl --fail-with-body --silent --show-error \
+              -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -d "{\"state\":\"${state}\",\"context\":\"${context}\",\"description\":\"${description}\"}"; then
+              echo "::warning::Unable to post ${context} status (${state})."
+            fi
+          }
+
           state="error"
           description="PyPI publication or install verification ${JOB_STATUS}"
+          diagnostic_context="${STATUS_CONTEXT}/workflow-failed"
+          diagnostic_description="Publisher workflow failed before an exact stage could be identified"
+
           if [ "${JOB_STATUS}" = "success" ]; then
             state="success"
             if [ "${VERSION_ALREADY_EXISTS}" = "true" ]; then
@@ -159,14 +186,26 @@ jobs:
             fi
           elif [ "${JOB_STATUS}" = "cancelled" ]; then
             description="PyPI publication or install verification cancelled"
+            diagnostic_context="${STATUS_CONTEXT}/cancelled"
+            diagnostic_description="Publisher workflow was cancelled"
+          elif [ "${BUILD_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/build-failed"
+            diagnostic_description="Package build or twine validation failed"
+          elif [ "${PYPI_CHECK_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/pypi-check-failed"
+            diagnostic_description="PyPI version lookup failed"
+          elif [ "${PUBLISHER_GATE_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/token-missing"
+            diagnostic_description="PYPI_API_TOKEN is not configured"
+          elif [ "${PUBLISH_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/upload-failed"
+            diagnostic_description="PyPI upload failed"
+          elif [ "${VERIFY_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/install-verify-failed"
+            diagnostic_description="Published package failed clean install verification"
           fi
 
-          if ! curl --fail-with-body --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d "{\"state\":\"${state}\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"${description}\"}"; then
-            echo "::warning::Unable to post terminal ${STATUS_CONTEXT} status (${JOB_STATUS})."
+          post_status "${state}" "${STATUS_CONTEXT}" "${description}"
+          if [ "${state}" != "success" ]; then
+            post_status "error" "${diagnostic_context}" "${diagnostic_description}"
           fi
