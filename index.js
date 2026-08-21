@@ -123,25 +123,35 @@ function responseLayers(payload) {
   return layers;
 }
 
+function normalizedDecision(value) {
+  const decision = nonEmptyString(value);
+  return decision === null ? null : decision.toLowerCase();
+}
+
 function layerSignals(response) {
   const hookOutput = response.hookSpecificOutput;
-  const hookDecision = hookOutput && typeof hookOutput === 'object'
-    ? nonEmptyString(hookOutput.permissionDecision)
-    : null;
-  const topLevelDecision = nonEmptyString(response.permissionDecision) ?? nonEmptyString(response.decision);
-  const decision = (hookDecision ?? topLevelDecision)?.toLowerCase() ?? null;
-  const policyAction = nonEmptyString(response.policy_action)?.toLowerCase() ?? null;
+  let hookDecision = null;
+  if (hookOutput && typeof hookOutput === 'object') {
+    hookDecision = normalizedDecision(hookOutput.permissionDecision);
+  }
+  const decisions = [
+    hookDecision,
+    normalizedDecision(response.permissionDecision),
+    normalizedDecision(response.decision),
+  ].filter((decision) => decision !== null);
+  const policyAction = normalizedDecision(response.policy_action);
   return {
     response,
     hookOutput,
-    decision,
+    hookDecision,
+    decisions,
     policyAction,
     hardDeny: response.blocked === true
       || response.continue === false
-      || ['deny', 'block'].includes(decision)
+      || decisions.some((decision) => ['deny', 'block'].includes(decision))
       || ['block', 'sandbox-required'].includes(policyAction),
-    requiresApproval: decision === 'ask' || ['review', 'require-reapproval'].includes(policyAction),
-    allows: decision === 'allow' || (response.blocked === false && policyAction === 'allow'),
+    requiresApproval: decisions.includes('ask') || ['review', 'require-reapproval'].includes(policyAction),
+    allows: decisions.includes('allow') || (response.blocked === false && policyAction === 'allow'),
   };
 }
 
@@ -152,14 +162,15 @@ function signalReason(signal, kind) {
   const responseReason = nonEmptyString(signal.response.reason);
   const reviewHint = nonEmptyString(signal.response.review_hint);
   if (kind === 'deny') {
-    if (['deny', 'block'].includes(signal.decision) && hookReason !== null) return hookReason;
+    if (['deny', 'block'].includes(signal.hookDecision) && hookReason !== null) return hookReason;
     return responseReason ?? reviewHint;
   }
   if (kind === 'ask') {
-    if (signal.decision === 'ask' && hookReason !== null) return hookReason;
-    return responseReason ?? reviewHint ?? hookReason;
+    if (signal.hookDecision === 'ask' && hookReason !== null) return hookReason;
+    return responseReason ?? reviewHint;
   }
-  return hookReason ?? responseReason ?? reviewHint;
+  if (signal.hookDecision === 'allow' && hookReason !== null) return hookReason;
+  return responseReason ?? reviewHint;
 }
 
 function signalMatchesKind(signal, kind) {
