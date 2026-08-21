@@ -73,11 +73,23 @@ normalize_harness() {
   esac
 }
 
+install_command_for() {
+  local name="$1"
+  case "$name" in
+    hol-guard) echo "pipx install hol-guard" ;;
+    plugin-scanner) echo "pipx install plugin-scanner" ;;
+    *) return 1 ;;
+  esac
+}
+
 need_command() {
   local name="$1"
   if ! command -v "$name" >/dev/null 2>&1; then
     echo "Missing command: $name" >&2
-    echo "Install HOL Guard with: pipx install hol-guard" >&2
+    local install_command
+    if install_command="$(install_command_for "$name")"; then
+      echo "Install it with: $install_command" >&2
+    fi
     exit 127
   fi
 }
@@ -90,14 +102,15 @@ status() {
 
 install_hint() {
   cat <<'HELP'
-Recommended:
+Recommended runtime install:
   pipx install hol-guard
 
-Fallback:
-  python3 -m pip install --user hol-guard
+Install the separate scanner when scanning is needed:
+  pipx install plugin-scanner
 
 Verify:
   hol-guard status
+  plugin-scanner --version
 HELP
 }
 

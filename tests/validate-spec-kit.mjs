@@ -36,6 +36,8 @@ assert(
 assert(manifest.includes('repository: "https://github.com/hashgraph-online/hol-guard-plugin"'), 'Spec Kit repository mismatch');
 assert(manifest.includes('license: "Apache-2.0"'), 'Spec Kit license must be Apache-2.0');
 assert(manifest.includes('speckit_version: ">=0.1.0"'), 'Spec Kit minimum version must be declared');
+assert(manifest.includes('name: "hol-guard"'), 'Spec Kit must declare the runtime CLI');
+assert(manifest.includes('name: "plugin-scanner"'), 'Spec Kit must declare the separate scanner CLI');
 assert(manifest.includes('name: "speckit.hol-guard.protect"'), 'protect command must be registered');
 assert(manifest.includes('name: "speckit.hol-guard.scan"'), 'scan command must be registered');
 
@@ -50,6 +52,9 @@ assert(protect.includes('hol-guard detect --json'), 'protect command must detect
 assert(protect.includes('Do not read `.env` files'), 'protect command must preserve env safety');
 
 const scan = await readFile(path.join(root, 'commands/scan.md'), 'utf8');
+assert(scan.includes('command -v plugin-scanner'), 'scan command must check scanner availability first');
+assert(scan.includes('pipx install plugin-scanner'), 'scan command must document the separate scanner distribution');
+assert(!scan.includes('pipx install hol-guard'), 'scan command must not claim the runtime package provides the scanner');
 assert(scan.includes('plugin-scanner lint'), 'scan command must include the read-only scanner path');
 assert(scan.includes('plugin-scanner verify'), 'scan command must include the stronger verification path');
 assert(scan.includes('Never run the target repository'), 'scan command must forbid executing untrusted target setup');

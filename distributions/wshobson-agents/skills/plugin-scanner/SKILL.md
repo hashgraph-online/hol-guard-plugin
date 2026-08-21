@@ -27,7 +27,7 @@ Use this skill when the user asks to:
 - Never read `.env` files, credential stores, private keys, or unrelated user secrets.
 - Prefer scanning a local path or a repository the user has already chosen to inspect.
 - Treat scanner findings as security evidence, not a guarantee that a package is safe.
-- Ask before installing `hol-guard` if `plugin-scanner` is not already available.
+- Ask before installing `plugin-scanner` if the command is not already available.
 - Do not upload the target, package names, URLs, findings, prompts, or workspace contents to a hosted service.
 
 ## 1. Check for the scanner
@@ -36,13 +36,13 @@ Use this skill when the user asks to:
 command -v plugin-scanner
 ```
 
-If it is not installed, explain that `plugin-scanner` ships with the open-source `hol-guard` package. Install only after the user explicitly approves setup:
+If it is not installed, explain that `plugin-scanner` is a separate open-source CLI distribution built from the HOL Guard source repository. Install only after the user explicitly approves setup:
 
 ```bash
-pipx install hol-guard==2.2.115
+pipx install plugin-scanner==2.2.117
 ```
 
-If `pipx` is unavailable, recommend an isolated Python CLI installation approach rather than silently modifying the user's Python environment.
+Do not assume an existing `hol-guard` installation also provides the scanner command. If `pipx` is unavailable, recommend an isolated Python CLI installation approach rather than silently modifying the user's Python environment.
 
 ## 2. Scan the target without executing it
 
@@ -81,4 +81,5 @@ Do not claim a target is safe solely because no finding was returned. Say that n
 
 ## Source
 
-The scanner is part of the open-source HOL Guard repository: https://github.com/hashgraph-online/hol-guard.
+- Scanner source: https://github.com/hashgraph-online/hol-guard
+- Scanner package: https://pypi.org/project/plugin-scanner/
