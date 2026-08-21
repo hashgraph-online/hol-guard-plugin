@@ -187,7 +187,7 @@ async function createFakeGuard(tempDir, logPath) {
   const binDir = path.join(tempDir, 'guard-bin');
   await mkdir(binDir, { recursive: true });
   const script = path.join(binDir, 'hol-guard');
-  await writeFile(script, `#!/usr/bin/env node
+  await writeFile(script, `#!${process.execPath}
 import { appendFileSync } from 'node:fs';
 let input = '';
 process.stdin.setEncoding('utf8');
