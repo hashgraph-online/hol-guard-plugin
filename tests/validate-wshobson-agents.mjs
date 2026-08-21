@@ -13,6 +13,14 @@ function assert(condition, message) {
   }
 }
 
+function assertAppearsBefore(text, first, second, message) {
+  const firstIndex = text.indexOf(first);
+  const secondIndex = text.indexOf(second);
+  assert(firstIndex >= 0, `${message}: missing ${first}`);
+  assert(secondIndex >= 0, `${message}: missing ${second}`);
+  assert(firstIndex < secondIndex, message);
+}
+
 async function walk(directory, relative = '') {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
@@ -63,6 +71,10 @@ assert(
   'README must use the canonical synchronized HOL Guard runtime pin',
 );
 assert(
+  payloadReadme.includes('`plugin-scanner` distribution'),
+  'README must disclose that plugin-scanner is published separately',
+);
+assert(
   holGuardSkill.includes(`pipx install hol-guard==${runtimePins.version}`),
   'Guard skill must install the pinned hol-guard runtime distribution',
 );
@@ -104,12 +116,16 @@ for (const file of textFiles) {
   }
 }
 
-assert(
-  scannerSkill.indexOf('command -v plugin-scanner') < scannerSkill.indexOf('pipx install plugin-scanner'),
+assertAppearsBefore(
+  scannerSkill,
+  'command -v plugin-scanner',
+  'pipx install plugin-scanner',
   'scanner must check local availability before offering installation',
 );
-assert(
-  holGuardSkill.indexOf('command -v hol-guard') < holGuardSkill.indexOf('pipx install hol-guard'),
+assertAppearsBefore(
+  holGuardSkill,
+  'command -v hol-guard',
+  'pipx install hol-guard',
   'Guard skill must check local availability before offering installation',
 );
 assert(
