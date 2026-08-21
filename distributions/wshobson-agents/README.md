@@ -4,7 +4,7 @@ This directory is the review-scoped external plugin payload for the `wshobson/ag
 
 ## Maintainer disclosure
 
-Hashgraph Online maintains this plugin payload and also maintains the open-source [`hol-guard`](https://github.com/hashgraph-online/hol-guard) runtime that the skills invoke. The default workflow does not require an account, API key, hosted HOL service, metered API, or paid service.
+Hashgraph Online maintains this plugin payload and also maintains the open-source [`hol-guard`](https://github.com/hashgraph-online/hol-guard) source repository. That source is published as two local CLI distributions used here: `hol-guard` for runtime protection and `plugin-scanner` for static security scanning. The default workflow does not require an account, API key, hosted HOL service, metered API, or paid service.
 
 All security decisions described by these skills run on the user's machine through the open-source `hol-guard` and `plugin-scanner` CLIs. The skills do not route package names, repository contents, URLs, prompts, scan findings, or other workspace data through a Hashgraph Online service.
 
@@ -25,7 +25,12 @@ It contains **no**:
 - `scripts/` directory, executable helper, install script, `preinstall`, `postinstall`, or package lifecycle script;
 - background daemon, telemetry setup, OAuth flow, hosted-service endpoint, or credential collection.
 
-The Markdown skills reference local shell commands. The only package installation command is `pipx install hol-guard==2.2.115`, and the skills allow it only when the user explicitly asks to set up HOL Guard or approves installation after the CLI availability check. That command installs the reviewed open-source runtime version directly from the user's configured Python package index. It does not transmit workspace contents.
+The Markdown skills reference local shell commands. The only package installation commands are:
+
+- `pipx install hol-guard==2.2.117` for the local runtime CLI;
+- `pipx install plugin-scanner==2.2.117` for the local scanner CLI.
+
+The skills allow either installation only when the user explicitly asks for setup or approves installation after the relevant CLI availability check. Those commands install reviewed open-source packages directly from the user's configured Python package index. They do not transmit workspace contents.
 
 The external `hol-guard` runtime can modify supported harness hook/settings configuration when the user explicitly requests protection through commands such as `hol-guard install <harness>`. Those changes are performed by the local Guard CLI, not by files in this marketplace payload, and are gated on the user's request for protection.
 
@@ -33,5 +38,7 @@ After installation, the skills invoke local commands such as `hol-guard status`,
 
 ## Source
 
-- Runtime and scanner: https://github.com/hashgraph-online/hol-guard
+- Runtime and scanner source: https://github.com/hashgraph-online/hol-guard
+- Runtime package: https://pypi.org/project/hol-guard/
+- Scanner package: https://pypi.org/project/plugin-scanner/
 - Distribution repository: https://github.com/hashgraph-online/hol-guard-plugin
