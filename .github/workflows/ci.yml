@@ -37,6 +37,14 @@ jobs:
           python -m pip install "./integrations/pydantic-ai-hol-guard[test]"
           python -m pytest -q integrations/pydantic-ai-hol-guard/tests
 
+      - name: Test CrewAI HOL Guard integration
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/crewai-hol-guard-venv"
+          source "${RUNNER_TEMP}/crewai-hol-guard-venv/bin/activate"
+          python -m pip install --upgrade pip
+          python -m pip install "./integrations/crewai-hol-guard[test]"
+          python -m pytest -q integrations/crewai-hol-guard/tests
+
       - name: Test LangChain HOL Guard integration
         run: |
           python3 -m venv "${RUNNER_TEMP}/langchain-hol-guard-venv"
