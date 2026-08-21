@@ -25,7 +25,13 @@ It contains **no**:
 - `scripts/` directory, executable helper, install script, `preinstall`, `postinstall`, or package lifecycle script;
 - background daemon, telemetry setup, OAuth flow, hosted-service endpoint, or credential collection.
 
-Each skill checks for its own local CLI before offering installation. The runtime skill pins the `hol-guard` distribution and the scanner skill separately pins the `plugin-scanner` distribution. Installation is allowed only when the user explicitly asks for setup or approves it after the relevant availability check. Both packages are installed directly from the user's configured Python package index and do not transmit workspace contents.
+The review-scoped runtime install is pinned to:
+
+```bash
+pipx install hol-guard==2.2.117
+```
+
+The scanner is a separate `plugin-scanner` distribution, and its exact pin is owned by `skills/plugin-scanner/SKILL.md`. Each skill checks for its own local CLI before offering installation. Installation is allowed only when the user explicitly asks for setup or approves it after the relevant availability check. Both packages are installed directly from the user's configured Python package index and do not transmit workspace contents.
 
 The external `hol-guard` runtime can modify supported harness hook/settings configuration when the user explicitly requests protection through commands such as `hol-guard install <harness>`. Those changes are performed by the local Guard CLI, not by files in this marketplace payload, and are gated on the user's request for protection.
 
