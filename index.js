@@ -2,12 +2,14 @@ import { spawn } from 'node:child_process';
 import process from 'node:process';
 
 export const name = 'hol-guard-plugin';
+export const inject = ['tools'];
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 30_000;
 const MAX_CAPTURE_BYTES = 256 * 1024;
 const MAX_PAYLOAD_BYTES = 256 * 1024;
 const TERMINATION_GRACE_MS = 250;
+const INCOMPLETE_REVIEW_REASON = 'HOL Guard review did not complete before DSH reached its monotonic tool guard.';
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -67,6 +69,8 @@ export function buildGuardPayload(exec) {
   };
   const callId = nonEmptyString(exec?.callId);
   if (callId !== null) payload.tool_use_id = callId;
+  const rootCallId = nonEmptyString(exec?.rootCallId);
+  if (rootCallId !== null) payload.root_tool_use_id = rootCallId;
   const serialized = JSON.stringify(payload);
   if (Buffer.byteLength(serialized, 'utf8') > MAX_PAYLOAD_BYTES) {
     throw new Error(`HOL Guard payload exceeds ${MAX_PAYLOAD_BYTES} bytes`);
@@ -124,19 +128,70 @@ export function decisionFromGuardResponse(payload) {
 
   let kind = null;
   if (decision === 'allow') kind = 'allow';
-  if (decision === 'deny' || decision === 'ask' || decision === 'block') kind = 'deny';
+  if (decision === 'ask') kind = 'ask';
+  if (decision === 'deny' || decision === 'block') kind = 'deny';
   if (kind === null && blocked === false && policyAction === 'allow') kind = 'allow';
-  if (kind === null && (blocked === true || ['block', 'review', 'require-reapproval', 'sandbox-required'].includes(policyAction))) {
-    kind = 'deny';
-  }
+  if (kind === null && ['review', 'require-reapproval'].includes(policyAction)) kind = 'ask';
+  if (kind === null && (blocked === true || ['block', 'sandbox-required'].includes(policyAction))) kind = 'deny';
   if (kind === null) return null;
 
   const reason = (
     hookOutput && typeof hookOutput === 'object' ? nonEmptyString(hookOutput.permissionDecisionReason) : null
   ) ?? nonEmptyString(response.reason)
     ?? nonEmptyString(response.review_hint)
-    ?? (kind === 'deny' ? 'HOL Guard denied this DSH tool call.' : 'HOL Guard allowed this DSH tool call.');
+    ?? (kind === 'ask'
+      ? 'HOL Guard requires approval for this DSH tool call.'
+      : kind === 'deny'
+        ? 'HOL Guard denied this DSH tool call.'
+        : 'HOL Guard allowed this DSH tool call.');
   return { kind, reason };
+}
+
+function approvalFailure(reason) {
+  return { kind: 'deny', reason: `HOL Guard review failed closed: ${reason}` };
+}
+
+export async function resolveDshApproval(ctx, exec, decision) {
+  if (decision.kind !== 'ask') return decision;
+  if (!exec?.agent) {
+    return approvalFailure(`tool "${nonEmptyString(exec?.name) ?? 'unknown'}" requires approval, but the call has no DSH agent`);
+  }
+
+  let approval;
+  try {
+    approval = typeof ctx?.get === 'function' ? ctx.get('approval') : undefined;
+  } catch (error) {
+    return approvalFailure(`the DSH approval service could not be resolved: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!approval || typeof approval.request !== 'function') {
+    return approvalFailure('this DSH profile has no native approval service');
+  }
+
+  let outcome;
+  try {
+    outcome = await approval.request({
+      agent: exec.agent,
+      toolName: exec.name,
+      callId: exec.callId,
+      reason: decision.reason,
+      signal: exec.signal,
+    });
+  } catch (error) {
+    return approvalFailure(`the DSH approval request failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  switch (outcome) {
+    case 'allowed-once':
+      return { kind: 'allow', reason: decision.reason };
+    case 'rejected':
+      return approvalFailure(`the user rejected tool "${nonEmptyString(exec.name) ?? 'unknown'}"`);
+    case 'cancelled':
+      return approvalFailure(`approval for tool "${nonEmptyString(exec.name) ?? 'unknown'}" was cancelled`);
+    case 'unavailable':
+      return approvalFailure(`no approval channel is available for tool "${nonEmptyString(exec.name) ?? 'unknown'}"`);
+    default:
+      return approvalFailure(`the DSH approval service returned an unknown outcome: ${String(outcome)}`);
+  }
 }
 
 async function terminateProcessTree(child) {
@@ -309,17 +364,36 @@ export async function evaluateToolExecution(exec, config = {}) {
     const detail = nonEmptyString(result.stderr) ?? `exit code ${result.exitCode}`;
     return { kind: 'deny', reason: `HOL Guard returned no authoritative decision (${detail}).` };
   }
-  if (decision.kind === 'allow' && result.exitCode !== 0) {
+  if ((decision.kind === 'allow' || decision.kind === 'ask') && result.exitCode !== 0) {
     const detail = nonEmptyString(result.stderr) ?? `exit code ${result.exitCode}`;
-    return { kind: 'deny', reason: `HOL Guard returned allow with a failing process (${detail}).` };
+    return { kind: 'deny', reason: `HOL Guard returned ${decision.kind} with a failing process (${detail}).` };
   }
   return decision;
 }
 
 export function apply(ctx, config = {}) {
+  if (!ctx || typeof ctx.on !== 'function') {
+    throw new Error('HOL Guard requires a valid DSH Cordis context.');
+  }
+  if (!ctx.tools || typeof ctx.tools.guard !== 'function') {
+    throw new Error('HOL Guard requires the DSH tools service with monotonic guard support.');
+  }
+
+  const decisions = new WeakMap();
+  ctx.tools.guard((exec) => {
+    const decision = decisions.get(exec);
+    if (decision?.kind === 'allow') return undefined;
+    return decision?.reason ?? INCOMPLETE_REVIEW_REASON;
+  });
+
   ctx.on('tools/pre-execute', async (exec, next) => {
-    const decision = await evaluateToolExecution(exec, config);
-    if (decision.kind === 'allow') return next();
-    return { kind: 'deny', reason: decision.reason };
+    decisions.set(exec, { kind: 'deny', reason: INCOMPLETE_REVIEW_REASON });
+    const reviewed = await evaluateToolExecution(exec, config);
+    const resolved = await resolveDshApproval(ctx, exec, reviewed);
+    decisions.set(exec, resolved);
+    if (resolved.kind !== 'allow') {
+      return { kind: 'deny', reason: resolved.reason };
+    }
+    return next();
   });
 }
