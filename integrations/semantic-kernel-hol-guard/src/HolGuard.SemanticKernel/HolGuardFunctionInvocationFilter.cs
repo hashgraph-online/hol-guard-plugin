@@ -157,9 +157,14 @@ public sealed class CliHolGuardDecisionProvider : IHolGuardDecisionProvider
 
     private static HolGuardDecision ParseDecision(string stdout)
     {
-        var candidates = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Reverse()
-            .Prepend(stdout.Trim());
+        var lines = stdout.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var candidates = new List<string>(lines.Length + 1) { stdout.Trim() };
+        for (var index = lines.Length - 1; index >= 0; index--)
+        {
+            candidates.Add(lines[index]);
+        }
 
         foreach (var candidate in candidates)
         {
@@ -233,9 +238,14 @@ public sealed class CliHolGuardDecisionProvider : IHolGuardDecisionProvider
     private static bool TryBoolean(JsonElement element, string name, out bool value)
     {
         value = false;
-        return element.TryGetProperty(name, out var property)
-            && (property.ValueKind == JsonValueKind.True || property.ValueKind == JsonValueKind.False)
-            && (value = property.GetBoolean()) == value;
+        if (!element.TryGetProperty(name, out var property)
+            || (property.ValueKind != JsonValueKind.True && property.ValueKind != JsonValueKind.False))
+        {
+            return false;
+        }
+
+        value = property.GetBoolean();
+        return true;
     }
 
     private static void TryKill(Process process)
