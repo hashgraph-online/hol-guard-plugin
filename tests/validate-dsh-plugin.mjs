@@ -40,9 +40,13 @@ assert(source.includes('root_tool_use_id'), 'plugin must preserve root DSH call 
 assert(source.includes('lockExecutionIdentity(exec)'), 'plugin must lock reviewed DSH execution identity fields');
 assert(source.includes('changed after review'), 'plugin must deny execution drift after review');
 assert(source.includes('prepareGuardProcess(config, workspace)'), 'plugin must validate the Guard subprocess trust boundary');
-assert(processSource.includes('sanitized absolute PATH'), 'Guard process module must use a sanitized absolute PATH');
+assert(!source.includes('process.env.HOL_GUARD_HOME'), 'plugin must not trust Guard home from the inherited environment');
+assert(!source.includes('process.env.HOL_GUARD_COMMAND'), 'plugin must not trust Guard command from the inherited environment');
+assert(processSource.includes('SAFE_SCALAR_ENVIRONMENT'), 'Guard process module must build an environment allowlist');
+assert(processSource.includes('sanitized owner-safe absolute PATH'), 'Guard process module must use an owner-safe absolute PATH');
+assert(processSource.includes('assertTrustedPathChain'), 'Guard process module must validate executable ownership and mode');
 assert(processSource.includes('PYTHONNOUSERSITE'), 'Guard process module must disable Python user-site imports');
-assert(processSource.includes('LD_PRELOAD'), 'Guard process module must scrub native loader injection');
+assert(processSource.includes('GIT_CONFIG_GLOBAL'), 'Guard process module must isolate inherited Git configuration');
 assert(
   manifest.scripts?.test?.includes('tests/dsh-execution-binding.test.mjs'),
   'DSH execution-binding regression suite must run in npm test',
@@ -55,5 +59,6 @@ assert(boundary.includes('monotonic final denial boundary'), 'DSH boundary docs 
 assert(boundary.includes('sandbox-required'), 'DSH boundary docs must state the sandbox-required limitation');
 assert(boundary.includes('listener short-circuits'), 'DSH boundary docs must describe listener-bypass behavior');
 assert(boundary.includes('serialized call identity'), 'DSH boundary docs must describe execution binding');
-assert(boundary.includes('sanitized absolute PATH'), 'DSH boundary docs must describe executable trust');
+assert(boundary.includes('minimal allowlisted environment'), 'DSH boundary docs must describe environment isolation');
+assert(boundary.includes('owner-safe absolute PATH'), 'DSH boundary docs must describe executable trust');
 console.log('DSH plugin validation passed.');

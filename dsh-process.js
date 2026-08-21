@@ -4,64 +4,38 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
-const UNSAFE_ENVIRONMENT_NAMES = new Set([
-  '__PYVENV_LAUNCHER__',
-  'BASH_ENV',
-  'CDPATH',
-  'DYLD_FRAMEWORK_PATH',
-  'DYLD_INSERT_LIBRARIES',
-  'DYLD_LIBRARY_PATH',
-  'ENV',
-  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'GIT_CEILING_DIRECTORIES',
-  'GIT_COMMON_DIR',
-  'GIT_CONFIG_COUNT',
-  'GIT_CONFIG_GLOBAL',
-  'GIT_CONFIG_NOSYSTEM',
-  'GIT_CONFIG_SYSTEM',
-  'GIT_DIR',
-  'GIT_INDEX_FILE',
-  'GIT_OBJECT_DIRECTORY',
-  'GIT_WORK_TREE',
-  'HOL_GUARD_COMMAND',
-  'LD_AUDIT',
-  'LD_LIBRARY_PATH',
-  'LD_PRELOAD',
-  'NODE_OPTIONS',
-  'NODE_PATH',
-  'PYTHONBREAKPOINT',
-  'PYTHONHOME',
-  'PYTHONINSPECT',
-  'PYTHONPATH',
-  'PYTHONPROFILEIMPORTTIME',
-  'PYTHONSTARTUP',
-  'PYTHONUSERBASE',
-  'PYTHONWARNINGS',
-  'SHELLOPTS',
-  'VIRTUAL_ENV',
+const SAFE_SCALAR_ENVIRONMENT = Object.freeze([
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TZ',
 ]);
-const UNSAFE_ENVIRONMENT_PREFIXES = [
-  'DYLD_',
-  'GIT_CONFIG_KEY_',
-  'GIT_CONFIG_VALUE_',
-];
+const SAFE_PLATFORM_ENVIRONMENT = Object.freeze([
+  'APPDATA',
+  'COMSPEC',
+  'LOCALAPPDATA',
+  'PATHEXT',
+  'PROGRAMDATA',
+  'SYSTEMROOT',
+  'WINDIR',
+]);
+const SAFE_OPTIONAL_DIRECTORY_ENVIRONMENT = Object.freeze([
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMDATA',
+  'XDG_CACHE_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_RUNTIME_DIR',
+  'XDG_STATE_HOME',
+]);
 
 function normalizedEnvironmentName(name) {
   return String(name).toUpperCase();
-}
-
-function unsafeEnvironmentName(name) {
-  const normalized = normalizedEnvironmentName(name);
-  if (UNSAFE_ENVIRONMENT_NAMES.has(normalized)) return true;
-  return UNSAFE_ENVIRONMENT_PREFIXES.some((prefix) => normalized.startsWith(prefix));
-}
-
-function withinPath(root, candidate) {
-  const relative = path.relative(path.resolve(root), path.resolve(candidate));
-  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
 function environmentValue(environment, name) {
@@ -80,13 +54,62 @@ function setEnvironmentValue(environment, name, value) {
   environment[name] = value;
 }
 
+function withinPath(root, candidate) {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function assertUnixOwnershipAndMode(target, stat) {
+  if (process.platform === 'win32' || typeof process.getuid !== 'function') return;
+  const currentUid = process.getuid();
+  if (stat.uid !== currentUid && stat.uid !== 0) {
+    throw new Error(`untrusted owner for ${target}`);
+  }
+  const writableByAnotherPrincipal = (stat.mode & 0o022) !== 0;
+  const protectedStickyDirectory = stat.isDirectory() && stat.uid === 0 && (stat.mode & 0o1000) !== 0;
+  if (writableByAnotherPrincipal && !protectedStickyDirectory) {
+    throw new Error(`path is writable by another user or group: ${target}`);
+  }
+}
+
+function assertTrustedPathChain(target) {
+  if (process.platform === 'win32') return;
+  let current = target;
+  while (true) {
+    const stat = statSync(current);
+    assertUnixOwnershipAndMode(current, stat);
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+}
+
+function verifiedDirectory(candidate, workspace, { allowTemporary = false } = {}) {
+  if (!path.isAbsolute(candidate)) throw new Error(`directory path is not absolute: ${candidate}`);
+  const resolved = realpathSync(candidate);
+  if (withinPath(workspace, resolved)) {
+    throw new Error(`directory resolves inside the active workspace: ${resolved}`);
+  }
+  if (!allowTemporary && withinPath(os.tmpdir(), resolved)) {
+    throw new Error(`directory resolves inside the system temporary root: ${resolved}`);
+  }
+  const stat = statSync(resolved);
+  if (!stat.isDirectory()) throw new Error(`path is not a directory: ${resolved}`);
+  assertTrustedPathChain(resolved);
+  return resolved;
+}
+
 function sanitizedPath(rawPath, workspace) {
   const safeEntries = [];
   const seen = new Set();
   for (const entry of String(rawPath ?? '').split(path.delimiter)) {
     if (!entry || !path.isAbsolute(entry)) continue;
-    const resolved = path.resolve(entry);
-    if (withinPath(workspace, resolved)) continue;
+    let resolved;
+    try {
+      resolved = verifiedDirectory(entry, workspace);
+    } catch {
+      continue;
+    }
     const identity = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
     if (seen.has(identity)) continue;
     seen.add(identity);
@@ -95,34 +118,102 @@ function sanitizedPath(rawPath, workspace) {
   return safeEntries.join(path.delimiter);
 }
 
-export function buildGuardEnvironment(overrides = {}, workspace = process.cwd()) {
-  const environment = { ...process.env, ...overrides };
-  for (const key of Object.keys(environment)) {
-    if (unsafeEnvironmentName(key)) delete environment[key];
+function systemUser(workspace) {
+  let info;
+  try {
+    info = os.userInfo();
+  } catch (error) {
+    throw new Error(`could not resolve the operating-system user: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const cleanPath = sanitizedPath(environmentValue(environment, 'PATH'), workspace);
+  const home = verifiedDirectory(info.homedir, workspace);
+  return { home, username: info.username };
+}
+
+function safeTemporaryDirectory(sourceEnvironment, workspace, fallback) {
+  for (const name of ['TMPDIR', 'TEMP', 'TMP']) {
+    const candidate = environmentValue(sourceEnvironment, name);
+    if (typeof candidate !== 'string' || !candidate.trim() || !path.isAbsolute(candidate)) continue;
+    try {
+      return verifiedDirectory(candidate, workspace, { allowTemporary: true });
+    } catch {
+      continue;
+    }
+  }
+  try {
+    return verifiedDirectory(os.tmpdir(), workspace, { allowTemporary: true });
+  } catch {
+    return fallback;
+  }
+}
+
+function copySafeScalar(source, target, name) {
+  const value = environmentValue(source, name);
+  if (typeof value === 'string' && value.length > 0) setEnvironmentValue(target, name, value);
+}
+
+function copySafeOptionalDirectory(source, target, name, workspace) {
+  const value = environmentValue(source, name);
+  if (typeof value !== 'string' || !value.trim() || !path.isAbsolute(value)) return;
+  try {
+    setEnvironmentValue(target, name, verifiedDirectory(value, workspace, { allowTemporary: true }));
+  } catch {
+    // Optional platform directories are omitted when they are missing,
+    // workspace-controlled, or otherwise untrusted.
+  }
+}
+
+export function buildGuardEnvironment(overrides = {}, workspace = process.cwd()) {
+  const sourceEnvironment = { ...process.env, ...overrides };
+  const environment = {};
+  const user = systemUser(workspace);
+  const temporaryDirectory = safeTemporaryDirectory(sourceEnvironment, workspace, user.home);
+  const cleanPath = sanitizedPath(environmentValue(sourceEnvironment, 'PATH'), workspace);
+
   setEnvironmentValue(environment, 'PATH', cleanPath);
+  setEnvironmentValue(environment, 'HOME', user.home);
+  setEnvironmentValue(environment, 'USERPROFILE', user.home);
+  setEnvironmentValue(environment, 'USER', user.username);
+  setEnvironmentValue(environment, 'LOGNAME', user.username);
+  setEnvironmentValue(environment, 'USERNAME', user.username);
+  setEnvironmentValue(environment, 'TMPDIR', temporaryDirectory);
+  setEnvironmentValue(environment, 'TEMP', temporaryDirectory);
+  setEnvironmentValue(environment, 'TMP', temporaryDirectory);
+
+  for (const name of SAFE_SCALAR_ENVIRONMENT) copySafeScalar(sourceEnvironment, environment, name);
+  for (const name of SAFE_PLATFORM_ENVIRONMENT) {
+    if (!SAFE_OPTIONAL_DIRECTORY_ENVIRONMENT.includes(name)) copySafeScalar(sourceEnvironment, environment, name);
+  }
+  for (const name of SAFE_OPTIONAL_DIRECTORY_ENVIRONMENT) {
+    copySafeOptionalDirectory(sourceEnvironment, environment, name, workspace);
+  }
+
+  setEnvironmentValue(environment, 'NO_COLOR', '1');
+  setEnvironmentValue(environment, 'TERM', 'dumb');
   setEnvironmentValue(environment, 'PYTHONDONTWRITEBYTECODE', '1');
+  setEnvironmentValue(environment, 'PYTHONIOENCODING', 'utf-8');
   setEnvironmentValue(environment, 'PYTHONNOUSERSITE', '1');
   setEnvironmentValue(environment, 'PYTHONSAFEPATH', '1');
+  setEnvironmentValue(environment, 'PYTHONUTF8', '1');
+  setEnvironmentValue(environment, 'GIT_ATTR_NOSYSTEM', '1');
+  setEnvironmentValue(environment, 'GIT_CONFIG_GLOBAL', os.devNull);
+  setEnvironmentValue(environment, 'GIT_CONFIG_NOSYSTEM', '1');
+  setEnvironmentValue(environment, 'GIT_OPTIONAL_LOCKS', '0');
+  setEnvironmentValue(environment, 'GIT_TERMINAL_PROMPT', '0');
   return environment;
 }
 
-function commandSpec(config, sourceEnvironment) {
+function commandSpec(config) {
   const configured = config.command;
   if (Array.isArray(configured)) {
-    if (configured.length === 0 || !configured.every((part) => typeof part === 'string' && part.length > 0)) {
-      throw new Error('HOL Guard command arrays must contain a non-empty executable followed by string arguments');
+    if (configured.length === 0 || !configured.every((part) => typeof part === 'string' && part.length > 0 && !part.includes('\0'))) {
+      throw new Error('HOL Guard command arrays must contain a non-empty executable followed by safe string arguments');
     }
     return { requestedExecutable: configured[0], prefixArgs: configured.slice(1) };
   }
-  if (typeof configured === 'string' && configured.trim()) {
+  if (typeof configured === 'string' && configured.trim() && !configured.includes('\0')) {
     return { requestedExecutable: configured.trim(), prefixArgs: [] };
   }
-  const fromEnvironment = environmentValue(sourceEnvironment, 'HOL_GUARD_COMMAND');
-  if (typeof fromEnvironment === 'string' && fromEnvironment.trim()) {
-    return { requestedExecutable: fromEnvironment.trim(), prefixArgs: [] };
-  }
+  if (configured !== undefined) throw new Error('HOL Guard command must be a non-empty string or string array');
   return { requestedExecutable: 'hol-guard', prefixArgs: [] };
 }
 
@@ -137,13 +228,17 @@ function executableExtensions(environment, requestedExecutable) {
     .filter(Boolean);
 }
 
-function verifiedExecutable(candidate, workspace) {
+function verifiedExecutable(candidate, workspace, { explicit = false } = {}) {
   const resolved = realpathSync(candidate);
   if (withinPath(workspace, resolved)) {
     throw new Error(`HOL Guard executable resolves inside the active workspace: ${resolved}`);
   }
+  if (!explicit && withinPath(os.tmpdir(), resolved)) {
+    throw new Error(`HOL Guard executable resolves inside the system temporary root: ${resolved}`);
+  }
   const stat = statSync(resolved);
   if (!stat.isFile()) throw new Error(`HOL Guard executable is not a regular file: ${resolved}`);
+  assertTrustedPathChain(resolved);
   accessSync(resolved, process.platform === 'win32' ? fsConstants.F_OK : fsConstants.X_OK);
   return resolved;
 }
@@ -157,17 +252,17 @@ function resolveFromPath(requestedExecutable, environment, workspace) {
       try {
         return verifiedExecutable(candidate, workspace);
       } catch {
-        // Continue through the sanitized absolute PATH. A workspace-local,
-        // missing, non-file, or non-executable candidate is never selected.
+        // Continue through the sanitized, owner-safe absolute PATH. Missing,
+        // non-file, non-executable, temporary, and untrusted candidates are skipped.
       }
     }
   }
-  throw new Error(`HOL Guard executable "${requestedExecutable}" was not found on the sanitized absolute PATH`);
+  throw new Error(`HOL Guard executable "${requestedExecutable}" was not found on the sanitized owner-safe absolute PATH`);
 }
 
 function resolveExecutable(requestedExecutable, environment, workspace) {
   if (path.isAbsolute(requestedExecutable)) {
-    return verifiedExecutable(requestedExecutable, workspace);
+    return verifiedExecutable(requestedExecutable, workspace, { explicit: true });
   }
   if (requestedExecutable.includes('/') || requestedExecutable.includes('\\')) {
     throw new Error('HOL Guard command paths must be absolute; relative command paths are not trusted');
@@ -175,12 +270,21 @@ function resolveExecutable(requestedExecutable, environment, workspace) {
   return resolveFromPath(requestedExecutable, environment, workspace);
 }
 
+export function prepareGuardHome(value, workspace = process.cwd()) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || !path.isAbsolute(value)) {
+    throw new Error('HOL Guard home must be an absolute trusted directory when configured');
+  }
+  return verifiedDirectory(value, workspace);
+}
+
 export function prepareGuardProcess(config = {}, workspace = process.cwd()) {
-  const sourceEnvironment = { ...process.env, ...(config.env ?? {}) };
-  const { requestedExecutable, prefixArgs } = commandSpec(config, sourceEnvironment);
-  const environment = buildGuardEnvironment(config.env ?? {}, workspace);
+  const environmentOverrides = typeof config.runner === 'function' ? (config.env ?? {}) : {};
+  const environment = buildGuardEnvironment(environmentOverrides, workspace);
+  const { requestedExecutable, prefixArgs } = commandSpec(config);
   const executable = typeof config.runner === 'function'
     ? requestedExecutable
     : resolveExecutable(requestedExecutable, environment, workspace);
-  return { executable, prefixArgs, environment };
+  const guardHome = prepareGuardHome(config.guardHome, workspace);
+  return { executable, prefixArgs, environment, guardHome };
 }
