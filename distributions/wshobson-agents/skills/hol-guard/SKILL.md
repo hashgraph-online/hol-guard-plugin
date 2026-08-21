@@ -28,13 +28,19 @@ command -v hol-guard
 command -v plugin-scanner
 ```
 
-If `hol-guard` is missing, install it only when the user explicitly asked for setup or approved installation:
+If `hol-guard` is missing, install the local runtime only when the user explicitly asked for setup or approved installation:
 
 ```bash
-pipx install hol-guard==2.2.115
+pipx install hol-guard==2.2.117
 ```
 
-If `pipx` is unavailable, explain that an isolated installer is recommended rather than silently modifying the user's Python environment.
+If `plugin-scanner` is missing and the user asks to scan agent tooling, install the separate scanner distribution only after approval:
+
+```bash
+pipx install plugin-scanner==2.2.117
+```
+
+Do not assume either distribution provides the other CLI. If `pipx` is unavailable, explain that isolated CLI installation is recommended rather than silently modifying the user's Python environment.
 
 Verify the local runtime:
 
@@ -175,4 +181,6 @@ Do not claim protection, approval, release readiness, or safety without command 
 
 ## Source
 
-The open-source runtime and scanner are maintained at https://github.com/hashgraph-online/hol-guard.
+- Runtime and scanner source: https://github.com/hashgraph-online/hol-guard
+- Runtime package: https://pypi.org/project/hol-guard/
+- Scanner package: https://pypi.org/project/plugin-scanner/
