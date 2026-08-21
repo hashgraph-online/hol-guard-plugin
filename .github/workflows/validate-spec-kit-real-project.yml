@@ -120,10 +120,32 @@ jobs:
           grep -F "hol-guard" installed-extensions.txt
           specify integration status --json | tee integration-status.json
 
-          PROTECT_COMMAND=".agent/commands/speckit.hol-guard.protect.md"
-          SCAN_COMMAND=".agent/commands/speckit.hol-guard.scan.md"
-          test -f "$PROTECT_COMMAND"
-          test -f "$SCAN_COMMAND"
+          echo "Registered project files:"
+          find .agent .specify -maxdepth 5 -type f -print | sort
+
+          mapfile -t PROTECT_COMMANDS < <(
+            grep -rlF --include='*.md' "hol-guard status" .agent/commands
+          )
+          mapfile -t SCAN_COMMANDS < <(
+            grep -rlF --include='*.md' "plugin-scanner lint" .agent/commands
+          )
+
+          if [[ "${#PROTECT_COMMANDS[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one rendered protect command, found %s\n' "${#PROTECT_COMMANDS[@]}" >&2
+            printf '%s\n' "${PROTECT_COMMANDS[@]:-}" >&2
+            exit 1
+          fi
+          if [[ "${#SCAN_COMMANDS[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one rendered scan command, found %s\n' "${#SCAN_COMMANDS[@]}" >&2
+            printf '%s\n' "${SCAN_COMMANDS[@]:-}" >&2
+            exit 1
+          fi
+
+          PROTECT_COMMAND="${PROTECT_COMMANDS[0]}"
+          SCAN_COMMAND="${SCAN_COMMANDS[0]}"
+          echo "Protect command: $PROTECT_COMMAND"
+          echo "Scan command: $SCAN_COMMAND"
+
           grep -F "hol-guard status" "$PROTECT_COMMAND"
           grep -F "hol-guard detect --json" "$PROTECT_COMMAND"
           grep -F "plugin-scanner lint" "$SCAN_COMMAND"
@@ -147,8 +169,8 @@ jobs:
             echo "- Release: \`$RELEASE_TAG\`"
             echo "- Immutable release commit: \`$RELEASE_COMMIT\`"
             echo "- Integration: generic commands directory at \`.agent/commands\`"
-            echo "- Registered command: \`speckit.hol-guard.protect\`"
-            echo "- Registered command: \`speckit.hol-guard.scan\`"
+            echo "- Rendered protect command: \`$PROTECT_COMMAND\`"
+            echo "- Rendered scan command: \`$SCAN_COMMAND\`"
             echo "- Protect recipe exercised: \`hol-guard status\`, \`hol-guard detect --json\`"
             echo "- Scan recipe exercised: \`plugin-scanner lint\`, \`plugin-scanner verify\`"
             echo "- Mutating harness installation intentionally skipped because the command requires explicit user intent."
