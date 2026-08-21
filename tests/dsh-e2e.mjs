@@ -227,12 +227,18 @@ async function runScenario({ protectedByGuard }) {
     HOL_GUARD_HOME: _guardHome,
     DSH_HOME: _dshHome,
     DSH_CONFIG_DIR: _dshConfigDir,
+    DSH_PERMISSION_MODE: _dshPermissionMode,
     ...baseEnv
   } = process.env;
   const env = {
     ...baseEnv,
     DSH_HOME: dshHome,
     DSH_CONFIG_DIR: dshConfigDir,
+    // This test isolates the HOL Guard pre-tool boundary. DSH's documented
+    // danger-full-access mode bypasses only its own file sandbox so the
+    // unprotected control must execute; the protected case must still be
+    // stopped by HOL Guard before the bash side effect.
+    DSH_PERMISSION_MODE: 'danger-full-access',
     DEEPSEEK_BASE_URL: provider.baseUrl,
     DEEPSEEK_API_KEY: 'mock-key',
     NO_COLOR: '1',
