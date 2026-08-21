@@ -102,21 +102,28 @@ export function parseGuardResponse(stdout) {
   return null;
 }
 
-function unwrapResponse(payload) {
-  if (!payload || typeof payload !== 'object') return null;
-  for (const key of ['data', 'payload', 'result']) {
-    const nested = payload[key];
-    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-      const unwrapped = unwrapResponse(nested);
-      if (unwrapped !== null) return unwrapped;
+function responseLayers(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const layers = [];
+  const queue = [payload];
+  const seen = new WeakSet();
+  while (queue.length > 0) {
+    if (layers.length >= 32) return null;
+    const current = queue.shift();
+    if (seen.has(current)) return null;
+    seen.add(current);
+    layers.push(current);
+    for (const key of ['data', 'payload', 'result']) {
+      const candidate = current[key];
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+        queue.push(candidate);
+      }
     }
   }
-  return payload;
+  return layers;
 }
 
-export function decisionFromGuardResponse(payload) {
-  const response = unwrapResponse(payload);
-  if (response === null) return null;
+function layerSignals(response) {
   const hookOutput = response.hookSpecificOutput;
   const hookDecision = hookOutput && typeof hookOutput === 'object'
     ? nonEmptyString(hookOutput.permissionDecision)
@@ -124,27 +131,62 @@ export function decisionFromGuardResponse(payload) {
   const topLevelDecision = nonEmptyString(response.permissionDecision) ?? nonEmptyString(response.decision);
   const decision = (hookDecision ?? topLevelDecision)?.toLowerCase() ?? null;
   const policyAction = nonEmptyString(response.policy_action)?.toLowerCase() ?? null;
-  const blocked = response.blocked;
+  return {
+    response,
+    hookOutput,
+    decision,
+    policyAction,
+    hardDeny: response.blocked === true
+      || response.continue === false
+      || ['deny', 'block'].includes(decision)
+      || ['block', 'sandbox-required'].includes(policyAction),
+    requiresApproval: decision === 'ask' || ['review', 'require-reapproval'].includes(policyAction),
+    allows: decision === 'allow' || (response.blocked === false && policyAction === 'allow'),
+  };
+}
 
+function signalReason(signal, kind) {
+  const hookReason = signal.hookOutput && typeof signal.hookOutput === 'object'
+    ? nonEmptyString(signal.hookOutput.permissionDecisionReason)
+    : null;
+  const responseReason = nonEmptyString(signal.response.reason);
+  const reviewHint = nonEmptyString(signal.response.review_hint);
+  if (kind === 'deny') {
+    if (['deny', 'block'].includes(signal.decision) && hookReason !== null) return hookReason;
+    return responseReason ?? reviewHint;
+  }
+  if (kind === 'ask') {
+    if (signal.decision === 'ask' && hookReason !== null) return hookReason;
+    return responseReason ?? reviewHint ?? hookReason;
+  }
+  return hookReason ?? responseReason ?? reviewHint;
+}
+
+function reasonFromSignals(signals, kind) {
+  const matching = signals.filter((signal) => (
+    kind === 'deny' ? signal.hardDeny : kind === 'ask' ? signal.requiresApproval : signal.allows
+  ));
+  for (const signal of [...matching].reverse()) {
+    const reason = signalReason(signal, kind);
+    if (reason !== null) return reason;
+  }
+  return kind === 'ask'
+    ? 'HOL Guard requires approval for this DSH tool call.'
+    : kind === 'deny'
+      ? 'HOL Guard denied this DSH tool call.'
+      : 'HOL Guard allowed this DSH tool call.';
+}
+
+export function decisionFromGuardResponse(payload) {
+  const layers = responseLayers(payload);
+  if (layers === null) return null;
+  const signals = layers.map(layerSignals);
   let kind = null;
-  if (decision === 'allow') kind = 'allow';
-  if (decision === 'ask') kind = 'ask';
-  if (decision === 'deny' || decision === 'block') kind = 'deny';
-  if (kind === null && blocked === false && policyAction === 'allow') kind = 'allow';
-  if (kind === null && ['review', 'require-reapproval'].includes(policyAction)) kind = 'ask';
-  if (kind === null && (blocked === true || ['block', 'sandbox-required'].includes(policyAction))) kind = 'deny';
+  if (signals.some((signal) => signal.hardDeny)) kind = 'deny';
+  else if (signals.some((signal) => signal.requiresApproval)) kind = 'ask';
+  else if (signals.some((signal) => signal.allows)) kind = 'allow';
   if (kind === null) return null;
-
-  const reason = (
-    hookOutput && typeof hookOutput === 'object' ? nonEmptyString(hookOutput.permissionDecisionReason) : null
-  ) ?? nonEmptyString(response.reason)
-    ?? nonEmptyString(response.review_hint)
-    ?? (kind === 'ask'
-      ? 'HOL Guard requires approval for this DSH tool call.'
-      : kind === 'deny'
-        ? 'HOL Guard denied this DSH tool call.'
-        : 'HOL Guard allowed this DSH tool call.');
-  return { kind, reason };
+  return { kind, reason: reasonFromSignals(signals, kind) };
 }
 
 function approvalFailure(reason) {
