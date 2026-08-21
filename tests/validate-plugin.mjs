@@ -39,6 +39,7 @@ await exists('dsh.plugin.json');
 const skill = await readFile(path.join(root, 'skills/hol-guard/SKILL.md'), 'utf8');
 assert(skill.includes('Never read `.env` files.'), 'skill must include env safety rule');
 assert(skill.includes('plugin-scanner verify'), 'skill must document plugin-scanner verify');
+assert(skill.includes('pipx install plugin-scanner'), 'skill must document the separately published scanner distribution');
 assert(skill.includes('hol-guard bootstrap'), 'skill must document hol-guard bootstrap');
 assert(skill.includes('hol-guard install claude-code'), 'skill must document Claude Code protection');
 assert(skill.includes('Claude Code is a first-class Guard target.'), 'skill must call out Claude as first-class');
@@ -55,6 +56,8 @@ assert(
   readmeLines.some((line) => line === '- Plugin security dataset: https://huggingface.co/datasets/HashgraphOnline/hol-plugin-security'),
   'README must cite the HOL plugin security dataset',
 );
+assert(readme.includes('separate `plugin-scanner` package'), 'README must distinguish the scanner distribution');
+assert(readme.includes('their respective upstream distributions'), 'README helper disclosure must describe both CLI distributions');
 assert(readme.includes('npm test'), 'README must document validation');
 assert(readme.includes('npm run test:dsh-e2e'), 'README must document the DSH end-to-end test');
 assert(readme.includes('bash scripts/hol-guard-plugin protect claude-code'), 'README must show Claude helper command');
@@ -68,6 +71,13 @@ assert(helper.includes('dsh|deepseek-harness|deepseek_harness'), 'helper must ac
 assert(helper.includes('normalize_scan_system'), 'helper must normalize scanner system aliases');
 assert(helper.includes('claude|claude-code|claude_code'), 'helper must accept Claude scanner aliases');
 assert(helper.includes('scan-system'), 'helper must support system-specific scan guidance');
+assert(helper.includes('install_command_for'), 'helper must map missing CLIs to their owning distribution');
+assert(helper.includes('plugin-scanner) echo "pipx install plugin-scanner"'), 'helper must recommend the scanner distribution when scanner is missing');
+
+const power = await readFile(path.join(root, 'POWER.md'), 'utf8');
+assert(power.includes('pipx install plugin-scanner'), 'Kiro power must document scanner installation');
+assert(power.includes('separately published scanner CLI'), 'Kiro power must distinguish scanner packaging');
+assert(power.includes('Do not assume the `hol-guard` runtime distribution provides the `plugin-scanner` command.'), 'Kiro power must prevent package alias assumptions');
 
 // Validate .mcp.json. Load forbidden patterns from data to avoid scanner false positives.
 await exists('.mcp.json');

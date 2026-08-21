@@ -45,7 +45,7 @@ Install the portable `plugin-scanner` skill with the open Skills CLI:
 npx skills add hashgraph-online/hol-guard-plugin --skill plugin-scanner
 ```
 
-The Skills CLI supports many coding agents. The skill asks before installing the `hol-guard` package and never executes code from a repository just to scan it.
+The Skills CLI supports many coding agents. The skill asks before installing the separate `plugin-scanner` package and never executes code from a repository just to scan it.
 
 ## What this plugin adds
 
@@ -139,7 +139,7 @@ bash scripts/hol-guard-plugin scan .
 bash scripts/hol-guard-plugin evidence
 ```
 
-The helper does not read `.env` files. It only calls `hol-guard` and `plugin-scanner` commands already exposed by the upstream package.
+The helper does not read `.env` files. It only calls `hol-guard` and `plugin-scanner` commands already exposed by their respective upstream distributions.
 
 ## Supported harness systems
 

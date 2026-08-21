@@ -55,14 +55,26 @@ Do not bypass Guard approvals or treat a pending policy request as applied.
 
 ## Scan agent extensions before trust
 
-For a public or local Agent Skill, plugin, MCP package, or mixed agent workspace, use the scanner without executing the target package:
+For a public or local Agent Skill, plugin, MCP package, or mixed agent workspace, first check for the separately published scanner CLI:
+
+```bash
+command -v plugin-scanner
+```
+
+If it is missing and the user approves installation:
+
+```bash
+pipx install plugin-scanner
+```
+
+Then scan without executing the target package:
 
 ```bash
 plugin-scanner lint <path>
 plugin-scanner verify <path>
 ```
 
-If `plugin-scanner` is not already available, installing `hol-guard` provides the supported security workflow. Treat scanner failures as real until the finding is reviewed.
+Do not assume the `hol-guard` runtime distribution provides the `plugin-scanner` command. Treat scanner failures as real until the finding is reviewed.
 
 ## Local evidence workflow
 

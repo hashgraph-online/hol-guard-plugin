@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import {
+  RUNTIME_PIN_PACKAGES,
   RUNTIME_PIN_TARGETS,
   inspectHolGuardRuntimePins,
   syncHolGuardRuntimeVersion,
@@ -23,9 +24,10 @@ async function createFixture(version = '2.1.27') {
   const root = await mkdtemp(path.join(os.tmpdir(), 'hol-guard-runtime-sync-'));
   temporaryRoots.push(root);
   for (const target of RUNTIME_PIN_TARGETS) {
+    const packageName = RUNTIME_PIN_PACKAGES[target];
     const absolutePath = path.join(root, target);
     await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, `before\n\`pipx install hol-guard==${version}\`\nafter\n`, 'utf8');
+    await writeFile(absolutePath, `before\n\`pipx install ${packageName}==${version}\`\nafter\n`, 'utf8');
   }
   return root;
 }
@@ -41,6 +43,10 @@ test.after(async () => {
 test('the repository review payload starts synchronized', async () => {
   const inspected = await inspectHolGuardRuntimePins(repositoryRoot);
   assert.match(inspected.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+  assert.deepEqual(
+    inspected.targets.map((target) => target.packageName),
+    ['hol-guard', 'hol-guard', 'plugin-scanner'],
+  );
 });
 
 test('updates every reviewed runtime pin and is idempotent', async () => {
@@ -51,8 +57,9 @@ test('updates every reviewed runtime pin and is idempotent', async () => {
   assert.deepEqual(first.changedFiles, RUNTIME_PIN_TARGETS);
 
   for (const target of RUNTIME_PIN_TARGETS) {
+    const packageName = RUNTIME_PIN_PACKAGES[target];
     const content = await readFile(path.join(root, target), 'utf8');
-    assert.match(content, /pipx install hol-guard==2\.1\.28/);
+    assert.match(content, new RegExp(`pipx install ${packageName}==2\\.1\\.28`));
     assert.doesNotMatch(content, /2\.1\.27/);
   }
 
@@ -157,29 +164,39 @@ test('commit failure rolls back every pin already replaced', async () => {
 });
 
 test('fails closed when a target is missing, duplicated, unpinned, or divergent', async () => {
+  const firstTarget = RUNTIME_PIN_TARGETS[0];
+  const firstPackage = RUNTIME_PIN_PACKAGES[firstTarget];
+
   const missingRoot = await createFixture();
-  await writeFile(path.join(missingRoot, RUNTIME_PIN_TARGETS[0]), 'no install command\n', 'utf8');
+  await writeFile(path.join(missingRoot, firstTarget), 'no install command\n', 'utf8');
   await assert.rejects(inspectHolGuardRuntimePins(missingRoot), /exactly one/);
 
   const duplicateRoot = await createFixture();
   await writeFile(
-    path.join(duplicateRoot, RUNTIME_PIN_TARGETS[0]),
-    'pipx install hol-guard==2.1.27\npipx install hol-guard==2.1.27\n',
+    path.join(duplicateRoot, firstTarget),
+    `pipx install ${firstPackage}==2.1.27\npipx install ${firstPackage}==2.1.27\n`,
     'utf8',
   );
   await assert.rejects(inspectHolGuardRuntimePins(duplicateRoot), /exactly one/);
 
   const unpinnedRoot = await createFixture();
-  await writeFile(path.join(unpinnedRoot, RUNTIME_PIN_TARGETS[0]), 'pipx install hol-guard\n', 'utf8');
-  await assert.rejects(inspectHolGuardRuntimePins(unpinnedRoot), /must pin HOL Guard/);
+  await writeFile(path.join(unpinnedRoot, firstTarget), `pipx install ${firstPackage}\n`, 'utf8');
+  await assert.rejects(inspectHolGuardRuntimePins(unpinnedRoot), /must pin hol-guard/);
 
   const nearMatchRoot = await createFixture();
-  await writeFile(path.join(nearMatchRoot, RUNTIME_PIN_TARGETS[0]), 'pipx install hol-guardian==2.1.27\n', 'utf8');
+  await writeFile(path.join(nearMatchRoot, firstTarget), 'pipx install hol-guardian==2.1.27\n', 'utf8');
   await assert.rejects(inspectHolGuardRuntimePins(nearMatchRoot), /exactly one/);
 
   const divergentRoot = await createFixture();
-  await writeFile(path.join(divergentRoot, RUNTIME_PIN_TARGETS[0]), 'pipx install hol-guard==2.1.26\n', 'utf8');
+  await writeFile(path.join(divergentRoot, firstTarget), `pipx install ${firstPackage}==2.1.26\n`, 'utf8');
   await assert.rejects(inspectHolGuardRuntimePins(divergentRoot), /pins have drifted/);
+});
+
+test('fails closed when the scanner package name regresses to the runtime package', async () => {
+  const root = await createFixture();
+  const scannerTarget = 'distributions/wshobson-agents/skills/plugin-scanner/SKILL.md';
+  await writeFile(path.join(root, scannerTarget), 'pipx install hol-guard==2.1.27\n', 'utf8');
+  await assert.rejects(inspectHolGuardRuntimePins(root), /pipx install plugin-scanner/);
 });
 
 test('the workflow validates PR code read-only and publishes only from trusted main', async () => {
