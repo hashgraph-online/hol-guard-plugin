@@ -67,7 +67,7 @@ public sealed class HolGuardFunctionInvocationFilterTests
     }
 
     [Fact]
-    public async Task GuardUnavailableFailsClosedBeforeFunctionExecution()
+    public async Task GuardUnavailableFailsClosedWithoutLeakingDiagnosticDetails()
     {
         var calls = 0;
         var kernel = BuildKernel(new ThrowingDecisionProvider());
@@ -79,11 +79,46 @@ public sealed class HolGuardFunctionInvocationFilterTests
         Assert.Equal(0, calls);
         Assert.NotNull(blocked);
         Assert.Equal("unavailable", blocked.Action);
-        Assert.Contains("timed out", blocked.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("HOL Guard is unavailable; function execution was blocked.", blocked.Reason);
+        Assert.DoesNotContain("secret-path", blocked.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task FilterPassesFunctionNameAndArgumentsToGuard()
+    public async Task UnexpectedProviderErrorFailsClosedBeforeFunctionExecution()
+    {
+        var calls = 0;
+        var kernel = BuildKernel(new UnexpectedThrowingDecisionProvider());
+        var function = KernelFunctionFactory.CreateFromMethod(() => ++calls, functionName: "shell");
+
+        var result = await kernel.InvokeAsync(function);
+        var blocked = result.GetValue<HolGuardBlockedResult>();
+
+        Assert.Equal(0, calls);
+        Assert.NotNull(blocked);
+        Assert.Equal("unavailable", blocked.Action);
+        Assert.Equal("HOL Guard is unavailable; function execution was blocked.", blocked.Reason);
+    }
+
+    [Fact]
+    public async Task ApprovalHandlerErrorFailsClosedBeforeFunctionExecution()
+    {
+        var calls = 0;
+        var kernel = BuildKernel(
+            new StaticDecisionProvider(new(HolGuardAction.Review, "needs approval")),
+            new ThrowingApprovalHandler());
+        var function = KernelFunctionFactory.CreateFromMethod(() => ++calls, functionName: "deploy");
+
+        var result = await kernel.InvokeAsync(function);
+        var blocked = result.GetValue<HolGuardBlockedResult>();
+
+        Assert.Equal(0, calls);
+        Assert.NotNull(blocked);
+        Assert.Equal("unavailable", blocked.Action);
+        Assert.Equal("HOL Guard approval is unavailable; function execution was blocked.", blocked.Reason);
+    }
+
+    [Fact]
+    public async Task FilterPassesFunctionNameArgumentsAndCancellationTokenToGuard()
     {
         var provider = new CapturingDecisionProvider();
         var kernel = BuildKernel(provider);
@@ -95,12 +130,14 @@ public sealed class HolGuardFunctionInvocationFilterTests
             ["path"] = "/tmp/demo.txt",
             ["content"] = "hello",
         };
+        using var cancellationSource = new CancellationTokenSource();
 
-        await kernel.InvokeAsync(function, arguments);
+        await kernel.InvokeAsync(function, arguments, cancellationSource.Token);
 
         Assert.Equal("write_file", provider.ToolName);
         Assert.Equal("/tmp/demo.txt", provider.Arguments!["path"]);
         Assert.Equal("hello", provider.Arguments["content"]);
+        Assert.Equal(cancellationSource.Token, provider.CancellationToken);
     }
 
     private static Kernel BuildKernel(
@@ -127,13 +164,23 @@ public sealed class HolGuardFunctionInvocationFilterTests
             string toolName,
             IReadOnlyDictionary<string, object?> arguments,
             CancellationToken cancellationToken = default) =>
-            throw new HolGuardUnavailableException("HOL Guard decision unavailable: timed out after 5s.");
+            throw new HolGuardUnavailableException("HOL Guard failed at /secret-path/internal.sock");
+    }
+
+    private sealed class UnexpectedThrowingDecisionProvider : IHolGuardDecisionProvider
+    {
+        public Task<HolGuardDecision> EvaluateAsync(
+            string toolName,
+            IReadOnlyDictionary<string, object?> arguments,
+            CancellationToken cancellationToken = default) =>
+            throw new IOException("unexpected provider failure");
     }
 
     private sealed class CapturingDecisionProvider : IHolGuardDecisionProvider
     {
         public string? ToolName { get; private set; }
         public IReadOnlyDictionary<string, object?>? Arguments { get; private set; }
+        public CancellationToken CancellationToken { get; private set; }
 
         public Task<HolGuardDecision> EvaluateAsync(
             string toolName,
@@ -142,6 +189,7 @@ public sealed class HolGuardFunctionInvocationFilterTests
         {
             ToolName = toolName;
             Arguments = arguments;
+            CancellationToken = cancellationToken;
             return Task.FromResult(new HolGuardDecision(HolGuardAction.Allow));
         }
     }
@@ -151,5 +199,13 @@ public sealed class HolGuardFunctionInvocationFilterTests
         public Task<bool> ApproveAsync(
             HolGuardReviewRequest request,
             CancellationToken cancellationToken = default) => Task.FromResult(approved);
+    }
+
+    private sealed class ThrowingApprovalHandler : IHolGuardApprovalHandler
+    {
+        public Task<bool> ApproveAsync(
+            HolGuardReviewRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new IOException("approval backend unavailable");
     }
 }
