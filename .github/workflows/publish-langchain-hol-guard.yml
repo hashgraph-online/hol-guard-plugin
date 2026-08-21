@@ -1,0 +1,71 @@
+name: Publish langchain-hol-guard
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "integrations/langchain-hol-guard/**"
+      - ".github/workflows/publish-langchain-hol-guard.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-langchain-hol-guard
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build, publish, and verify
+    runs-on: ubuntu-latest
+    env:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build and validate distribution
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install build twine
+          rm -rf "${RUNNER_TEMP}/langchain-hol-guard-dist"
+          python3 -m build integrations/langchain-hol-guard --outdir "${RUNNER_TEMP}/langchain-hol-guard-dist"
+          python3 -m twine check "${RUNNER_TEMP}/langchain-hol-guard-dist"/*
+
+      - name: Require configured PyPI publisher
+        if: env.PYPI_API_TOKEN == ''
+        run: |
+          echo "PYPI_API_TOKEN is not available to this repository; refusing to improvise package publication." >&2
+          exit 1
+
+      - name: Publish to PyPI
+        if: env.PYPI_API_TOKEN != ''
+        run: |
+          set -euo pipefail
+          python3 -m twine upload \
+            --non-interactive \
+            --username __token__ \
+            --password "${PYPI_API_TOKEN}" \
+            "${RUNNER_TEMP}/langchain-hol-guard-dist"/*
+
+      - name: Verify normal installability
+        if: env.PYPI_API_TOKEN != ''
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if python3 -m pip install --no-cache-dir "langchain-hol-guard==0.1.0"; then
+              python3 - <<'PY'
+          from langchain_hol_guard import HolGuardMiddleware
+          assert HolGuardMiddleware is not None
+          print("langchain-hol-guard 0.1.0 is installable from PyPI")
+          PY
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep 20
+            fi
+          done
+          echo "Published distribution did not become installable within the verification window." >&2
+          exit 1
