@@ -58,13 +58,16 @@ jobs:
             "git+https://github.com/github/spec-kit.git@ead30d9cfb99c07b3073afa73e7b40a64015f17f"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Install pinned HOL Guard CLI in an isolated environment
+      - name: Install pinned HOL Guard and scanner CLIs
         shell: bash
         run: |
           set -euo pipefail
+          # HOL Guard and plugin-scanner intentionally publish as separate PyPI
+          # distributions even though they share source and a release version.
           pipx install --force "hol-guard==2.2.115"
+          pipx install --force "plugin-scanner==2.2.115"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.local/bin:$PATH"
+          export PATH="$HOME/.local/bin:/opt/pipx_bin:$PATH"
           command -v hol-guard
           command -v plugin-scanner
           hol-guard --version
@@ -110,7 +113,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
+          export PATH="$HOME/.local/bin:/opt/pipx_bin:$PATH"
 
           workdir="$(mktemp -d)"
           trap 'rm -rf "$workdir"' EXIT
