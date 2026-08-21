@@ -51,7 +51,6 @@ for (const [name, skill] of [
   assert(Buffer.byteLength(skill, 'utf8') < 8192, `${name} SKILL.md must remain below the Codex 8 KiB limit`);
   assert(skill.startsWith(`---\nname: ${name}\n`), `${name} skill must have canonical frontmatter`);
   assert(skill.includes('license: Apache-2.0'), `${name} skill must declare Apache-2.0`);
-  assert(skill.includes('pipx install hol-guard'), `${name} skill must use the isolated pipx install path`);
   assert(skill.toLowerCase().includes('local'), `${name} skill must explicitly describe local execution`);
 }
 
@@ -62,6 +61,18 @@ assert(
 assert(
   payloadReadme.includes(`pipx install hol-guard==${runtimePins.version}`),
   'README must use the canonical synchronized HOL Guard runtime pin',
+);
+assert(
+  holGuardSkill.includes(`pipx install hol-guard==${runtimePins.version}`),
+  'Guard skill must install the pinned hol-guard runtime distribution',
+);
+assert(
+  scannerSkill.includes(`pipx install plugin-scanner==${runtimePins.version}`),
+  'scanner skill must install the pinned plugin-scanner distribution',
+);
+assert(
+  !scannerSkill.includes('pipx install hol-guard'),
+  'scanner skill must not claim the hol-guard runtime package provides plugin-scanner',
 );
 
 const forbiddenPaths = [
@@ -94,7 +105,7 @@ for (const file of textFiles) {
 }
 
 assert(
-  scannerSkill.indexOf('command -v plugin-scanner') < scannerSkill.indexOf('pipx install hol-guard'),
+  scannerSkill.indexOf('command -v plugin-scanner') < scannerSkill.indexOf('pipx install plugin-scanner'),
   'scanner must check local availability before offering installation',
 );
 assert(
