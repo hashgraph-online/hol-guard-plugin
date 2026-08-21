@@ -34,13 +34,9 @@ If `hol-guard` is missing, install the local runtime only when the user explicit
 pipx install hol-guard==2.2.117
 ```
 
-If `plugin-scanner` is missing and the user asks to scan agent tooling, install the separate scanner distribution only after approval:
+If `plugin-scanner` is missing and the user asks to scan agent tooling, use the bundled `plugin-scanner` skill for its separate approved installation flow. Do not assume the `hol-guard` distribution provides the scanner CLI.
 
-```bash
-pipx install plugin-scanner==2.2.117
-```
-
-Do not assume either distribution provides the other CLI. If `pipx` is unavailable, explain that isolated CLI installation is recommended rather than silently modifying the user's Python environment.
+If `pipx` is unavailable, explain that isolated CLI installation is recommended rather than silently modifying the user's Python environment.
 
 Verify the local runtime:
 
