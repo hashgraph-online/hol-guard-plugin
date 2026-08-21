@@ -1,13 +1,26 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from crewai.hooks.tool_hooks import ToolCallHookContext, register_before_tool_call_hook
+from crewai.hooks.tool_hooks import (
+    ToolCallHookContext,
+    get_before_tool_call_hooks,
+    register_before_tool_call_hook,
+    unregister_before_tool_call_hook,
+)
+
+logger = logging.getLogger(__name__)
+
+MAX_SERIALIZED_PAYLOAD_BYTES = 24_000
+MAX_AGENT_ROLE_CHARS = 512
+MAX_TASK_DESCRIPTION_CHARS = 4_096
+MAX_CREW_ID_CHARS = 512
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +140,13 @@ def evaluate_with_hol_guard(
             "HOL Guard decision unavailable: CrewAI tool input/context is not JSON serializable"
         ) from exc
 
+    payload_bytes = len(serialized_payload.encode("utf-8"))
+    if payload_bytes > MAX_SERIALIZED_PAYLOAD_BYTES:
+        raise HolGuardUnavailable(
+            "HOL Guard decision unavailable: serialized CrewAI hook payload "
+            f"exceeds {MAX_SERIALIZED_PAYLOAD_BYTES} bytes"
+        )
+
     try:
         completed = subprocess.run(
             command,
@@ -153,10 +173,32 @@ def evaluate_with_hol_guard(
     return decision
 
 
-def _safe_string(value: Any) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
+def _bounded_string(value: Any, max_chars: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) > max_chars:
+        return text[:max_chars]
+    return text
+
+
+def _bounded_identifier(value: Any, max_chars: int) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (str, int)):
+        text = str(value).strip()
+    else:
+        # Crew identifiers are commonly UUID-like objects. Avoid serializing
+        # arbitrary rich objects into the security envelope.
+        module = type(value).__module__
+        if module != "uuid":
+            return None
+        text = str(value).strip()
+    if not text:
+        return None
+    return text[:max_chars]
 
 
 def _context_metadata(context: ToolCallHookContext) -> dict[str, Any]:
@@ -165,14 +207,16 @@ def _context_metadata(context: ToolCallHookContext) -> dict[str, Any]:
     crew = getattr(context, "crew", None)
     metadata: dict[str, Any] = {}
 
-    agent_role = _safe_string(getattr(agent, "role", None))
+    agent_role = _bounded_string(getattr(agent, "role", None), MAX_AGENT_ROLE_CHARS)
     if agent_role:
         metadata["agent_role"] = agent_role
-    task_description = _safe_string(getattr(task, "description", None))
+    task_description = _bounded_string(
+        getattr(task, "description", None), MAX_TASK_DESCRIPTION_CHARS
+    )
     if task_description:
         metadata["task_description"] = task_description
-    crew_id = _safe_string(getattr(crew, "id", None)) or _safe_string(
-        getattr(crew, "name", None)
+    crew_id = _bounded_identifier(getattr(crew, "id", None), MAX_CREW_ID_CHARS) or _bounded_string(
+        getattr(crew, "name", None), MAX_CREW_ID_CHARS
     )
     if crew_id:
         metadata["crew_id"] = crew_id
@@ -210,7 +254,20 @@ class HolGuardCrewAIHook:
                 self.timeout_seconds,
                 self.executable,
             )
-        except Exception:
+        except HolGuardUnavailable as exc:
+            logger.warning(
+                "HOL Guard unavailable; blocking CrewAI tool %r: %s",
+                context.tool_name,
+                exc,
+            )
+            return False
+        except Exception as exc:
+            logger.warning(
+                "HOL Guard provider failed; blocking CrewAI tool %r: %s",
+                context.tool_name,
+                exc,
+            )
+            logger.debug("HOL Guard provider traceback", exc_info=True)
             return False
 
         if decision.action == "allow":
@@ -222,9 +279,23 @@ class HolGuardCrewAIHook:
                 return False
             try:
                 return None if self.approval_handler(context, decision) else False
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "HOL Guard approval handler failed; blocking CrewAI tool %r: %s",
+                    context.tool_name,
+                    exc,
+                )
+                logger.debug("HOL Guard approval-handler traceback", exc_info=True)
                 return False
+        logger.warning(
+            "HOL Guard returned unsupported action %r; blocking CrewAI tool %r",
+            decision.action,
+            context.tool_name,
+        )
         return False
+
+
+_registered_hook: HolGuardCrewAIHook | None = None
 
 
 def enable_hol_guard(
@@ -234,8 +305,26 @@ def enable_hol_guard(
     executable: str = "hol-guard",
     decision_provider: DecisionProvider = evaluate_with_hol_guard,
     approval_handler: ApprovalHandler | None = None,
+    replace: bool = False,
 ) -> HolGuardCrewAIHook:
-    """Register HOL Guard globally for every CrewAI tool call in this process."""
+    """Register one global HOL Guard hook for every CrewAI tool call.
+
+    Repeated calls are idempotent while the previously returned hook remains in
+    CrewAI's global hook registry. Set ``replace=True`` to intentionally replace
+    the current HOL Guard hook with new configuration.
+    """
+
+    global _registered_hook
+
+    registered_hooks = get_before_tool_call_hooks()
+    if _registered_hook is not None and _registered_hook in registered_hooks:
+        if not replace:
+            return _registered_hook
+        unregister_before_tool_call_hook(_registered_hook)
+    elif _registered_hook is not None:
+        # The registry may have been cleared by the host application. Do not
+        # treat a stale local reference as an active registration.
+        _registered_hook = None
 
     hook = HolGuardCrewAIHook(
         workspace=workspace,
@@ -245,4 +334,5 @@ def enable_hol_guard(
         approval_handler=approval_handler,
     )
     register_before_tool_call_hook(hook)
+    _registered_hook = hook
     return hook
