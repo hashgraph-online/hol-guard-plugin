@@ -58,12 +58,17 @@ jobs:
             "git+https://github.com/github/spec-kit.git@ead30d9cfb99c07b3073afa73e7b40a64015f17f"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Install pinned HOL Guard CLI
+      - name: Install pinned HOL Guard CLI in an isolated environment
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --user --disable-pip-version-check "hol-guard==2.2.115"
+          pipx install --force "hol-guard==2.2.115"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          command -v hol-guard
+          command -v plugin-scanner
+          hol-guard --version
+          plugin-scanner --version
 
       - name: Resolve exact released archive
         id: release
