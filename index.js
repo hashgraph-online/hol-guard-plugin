@@ -495,7 +495,7 @@ export function apply(ctx, config = {}) {
       request = buildGuardPayload(exec);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      const reason = `HOL Guard could not serialize this DSH tool call: ${detail}`;
+      const reason = 'HOL Guard could not serialize this DSH tool call: ' + detail;
       decisions.set(exec, { kind: 'deny', reason, reviewedSerialized: null });
       return { kind: 'deny', reason };
     }
@@ -526,7 +526,7 @@ export function apply(ctx, config = {}) {
       lockExecutionIdentity(exec);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      const reason = `HOL Guard could not lock the reviewed DSH execution: ${detail}`;
+      const reason = 'HOL Guard could not lock the reviewed DSH execution: ' + detail;
       decisions.set(exec, { kind: 'deny', reason, reviewedSerialized: request.serialized });
       return { kind: 'deny', reason };
     }
