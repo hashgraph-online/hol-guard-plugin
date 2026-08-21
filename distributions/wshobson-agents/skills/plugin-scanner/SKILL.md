@@ -39,7 +39,7 @@ command -v plugin-scanner
 If it is not installed, explain that `plugin-scanner` is a separate open-source CLI distribution built from the HOL Guard source repository. Install only after the user explicitly approves setup:
 
 ```bash
-pipx install plugin-scanner==2.2.117
+pipx install plugin-scanner==2.2.119
 ```
 
 Do not assume an existing `hol-guard` installation also provides the scanner command. If `pipx` is unavailable, recommend an isolated Python CLI installation approach rather than silently modifying the user's Python environment.

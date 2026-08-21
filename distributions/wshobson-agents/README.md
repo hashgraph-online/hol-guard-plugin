@@ -28,7 +28,7 @@ It contains **no**:
 The review-scoped runtime install is pinned to:
 
 ```bash
-pipx install hol-guard==2.2.117
+pipx install hol-guard==2.2.119
 ```
 
 The scanner is a separate `plugin-scanner` distribution, and its exact pin is owned by `skills/plugin-scanner/SKILL.md`. Each skill checks for its own local CLI before offering installation. Installation is allowed only when the user explicitly asks for setup or approves it after the relevant availability check. Both packages are installed directly from the user's configured Python package index and do not transmit workspace contents.
