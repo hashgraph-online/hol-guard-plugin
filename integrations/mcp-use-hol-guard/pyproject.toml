@@ -7,7 +7,7 @@ name = "mcp-use-hol-guard"
 version = "0.1.0"
 description = "Optional HOL Guard pre-tool middleware for mcp-use"
 requires-python = ">=3.11,<3.14"
-dependencies = ["mcp-use==1.7.0"]
+dependencies = ["mcp-use==1.7.0", "mcp==1.29.0"]
 
 [project.optional-dependencies]
 test = ["pytest>=8.3", "pytest-asyncio>=0.25"]
