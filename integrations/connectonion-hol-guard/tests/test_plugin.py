@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from types import SimpleNamespace
 
 import pytest
@@ -48,21 +49,28 @@ class Agent:
             handler(self)
 
 
-def run_tool(monkeypatch, *, code=0, stdout='{"decision":"allow"}', error=None):
+def run_tool(monkeypatch, *, code=0, stdout='{"decision":"allow"}', error=None, guard_runner=None, arguments=None):
     executions = {"count": 0}
 
     def effect(value="ok"):
         executions["count"] += 1
         return value
 
-    def guard_runner(*_args, **_kwargs):
+    def default_guard_runner(*_args, **_kwargs):
         if error is not None:
             raise error
         return code, stdout
 
-    monkeypatch.setattr(plugin, "_run_guard", guard_runner)
+    monkeypatch.setattr(plugin, "_run_guard", guard_runner or default_guard_runner)
     agent = Agent()
-    result = execute_single_tool("effect", {"value": "ok"}, "call-1", Tools(effect), agent, Logger())
+    result = execute_single_tool(
+        "effect",
+        arguments or {"value": "ok"},
+        "call-1",
+        Tools(effect),
+        agent,
+        Logger(),
+    )
     return result, executions["count"]
 
 
@@ -81,6 +89,7 @@ def test_allow_executes_underlying_tool_exactly_once(monkeypatch):
     [
         (0, '{"decision":"deny"}', None),
         (0, '{"policy_action":"review"}', None),
+        (0, '{"decision":"warn"}', None),
         (0, "not-json", None),
         (2, '{"decision":"allow"}', None),
         (0, "", RuntimeError("provider unavailable: secret-argument")),
@@ -96,6 +105,36 @@ def test_denied_ambiguous_or_unavailable_guard_never_executes_tool(monkeypatch, 
 def test_deny_precedes_nested_allow():
     decision = plugin._classify_guard_decision({"decision": "allow", "data": {"permissionDecision": "deny"}})
     assert decision == "deny"
+
+
+def test_nonserializable_arguments_fail_closed_without_leaking_repr(monkeypatch):
+    calls = {"count": 0}
+
+    class OpaqueArgument:
+        def __repr__(self):
+            return "opaque-argument-marker"
+
+    def runner(*_args, **_kwargs):
+        calls["count"] += 1
+        return 0, '{"decision":"allow"}'
+
+    monkeypatch.setattr(plugin, "_run_guard", runner)
+    agent = Agent()
+    agent.current_session["pending_tool"] = {"name": "effect", "arguments": {"value": OpaqueArgument()}}
+    with pytest.raises(ValueError) as exc_info:
+        plugin.evaluate_pending_tool(agent)
+    assert calls["count"] == 0
+    assert "opaque-argument-marker" not in str(exc_info.value)
+
+
+def test_oversized_guard_stdout_fails_closed_before_tool_execution(monkeypatch):
+    def oversized_runner(*_args, **_kwargs):
+        raw = plugin._read_bounded_stdout(io.BytesIO(b"x" * (plugin.MAX_OUTPUT_BYTES + 1)))
+        return 0, raw.decode("utf-8")
+
+    result, count = run_tool(monkeypatch, guard_runner=oversized_runner)
+    assert count == 0
+    assert result["status"] == "error"
 
 
 def test_oversized_request_fails_before_provider(monkeypatch):
