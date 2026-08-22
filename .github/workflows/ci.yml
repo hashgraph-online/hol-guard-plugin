@@ -62,6 +62,13 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npm test
 
+      - name: Test Qwen Code HOL Guard integration
+        working-directory: integrations/qwen-code-hol-guard
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --input-type=module -e "const m = await import('@qwen-code/qwen-code-core'); if (typeof m.Config !== 'function') throw new Error('Qwen Code core Config export unavailable')"
+          npm test
+
       - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
