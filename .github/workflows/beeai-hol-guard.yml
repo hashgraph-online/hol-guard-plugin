@@ -1,0 +1,32 @@
+name: BeeAI HOL Guard contract
+
+on:
+  pull_request:
+    paths:
+      - 'integrations/beeai-hol-guard/**'
+      - '.github/workflows/beeai-hol-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/beeai-hol-guard/**'
+      - '.github/workflows/beeai-hol-guard.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install proof and test dependencies
+        run: python -m pip install './integrations/beeai-hol-guard[test]'
+      - name: Run BeeAI execution contract
+        run: python -m pytest -q integrations/beeai-hol-guard/tests
