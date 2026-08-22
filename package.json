@@ -2,7 +2,7 @@
   "name": "hol-guard-plugin",
   "version": "0.3.0",
   "private": true,
-  "description": "HOL Guard security plugin for Codex, DeepSeek Harness, and agent ecosystems.",
+  "description": "HOL Guard security integrations for AI harnesses, skills, MCP servers, agent frameworks, and plugin marketplaces.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "index.js",
@@ -24,7 +24,10 @@
     "deepseek-harness",
     "hol-guard",
     "ai-security",
-    "agent-security"
+    "agent-security",
+    "ai-agents",
+    "mcp",
+    "agent-frameworks"
   ],
   "dsh": {
     "bundle": {
