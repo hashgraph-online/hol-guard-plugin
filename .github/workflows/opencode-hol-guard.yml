@@ -1,0 +1,47 @@
+name: OpenCode HOL Guard
+
+on:
+  pull_request:
+    paths:
+      - "integrations/opencode-hol-guard/**"
+      - ".github/workflows/opencode-hol-guard.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "integrations/opencode-hol-guard/**"
+      - ".github/workflows/opencode-hol-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: OpenCode pre-tool contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Verify pinned OpenCode hook contract
+        env:
+          OPENCODE_COMMIT: 3a31c4ea801915c0b050df4b3842997ea62b6e93
+          OPENCODE_SOURCE: ${{ runner.temp }}/opencode
+        run: |
+          git clone --filter=blob:none https://github.com/anomalyco/opencode.git "$OPENCODE_SOURCE"
+          git -C "$OPENCODE_SOURCE" checkout --detach "$OPENCODE_COMMIT"
+          grep -F '"tool.execute.before"?: (' "$OPENCODE_SOURCE/packages/plugin/src/index.ts"
+          grep -F 'input: { tool: string; sessionID: string; callID: string }' "$OPENCODE_SOURCE/packages/plugin/src/index.ts"
+          grep -F 'output: { args: any }' "$OPENCODE_SOURCE/packages/plugin/src/index.ts"
+          grep -F 'throw new Error("Do not read .env files")' "$OPENCODE_SOURCE/packages/web/src/content/docs/plugins.mdx"
+
+      - name: Test HOL Guard OpenCode plugin
+        working-directory: integrations/opencode-hol-guard
+        run: npm test
