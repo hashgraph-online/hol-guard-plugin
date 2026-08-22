@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -66,19 +67,21 @@ def test_non_allow_executes_zero_sync_handlers(payload):
 
 
 def test_provider_failure_fails_closed_in_deerflow_default_middleware():
+    marker = "raw-argument-marker"
+
     def broken(_: bytes):
-        raise RuntimeError("secret argument should not escape")
+        raise RuntimeError(f"provider received {marker}")
 
     provider = HolGuardProvider(runner=broken)
     middleware = GuardrailMiddleware(provider)
-    request = _request(args={"token": "super-secret"})
+    request = _request(args={"value": marker})
     handler = MagicMock()
 
     result = middleware.wrap_tool_call(request, handler)
 
     handler.assert_not_called()
     assert result.status == "error"
-    assert "super-secret" not in result.content
+    assert marker not in result.content
 
 
 def test_malformed_decision_fails_closed():
@@ -168,7 +171,7 @@ def test_class_path_import_is_stable():
 
 
 def test_payload_uses_bounded_context_without_raw_failure_leaks():
-    request = GuardrailRequest(tool_name="bash", tool_input={"token": "sensitive"})
+    request = GuardrailRequest(tool_name="bash", tool_input={"value": "sensitive-marker"})
     captured = {}
 
     def run(encoded: bytes):
@@ -178,5 +181,54 @@ def test_payload_uses_bounded_context_without_raw_failure_leaks():
     decision = HolGuardProvider(runner=run).evaluate(request)
     assert decision.allow is False
     assert captured["tool_name"] == "bash"
-    assert captured["tool_input"] == {"token": "sensitive"}
-    assert "sensitive" not in decision.reasons[0].message
+    assert captured["tool_input"] == {"value": "sensitive-marker"}
+    assert "sensitive-marker" not in decision.reasons[0].message
+
+
+def test_provider_tolerates_request_without_optional_authorization_fields():
+    request = SimpleNamespace(
+        tool_name="bash",
+        tool_input={"command": "echo safe"},
+        tool_call_id="call-1",
+        agent_id="agent-1",
+        thread_id="thread-1",
+        run_id="run-1",
+        user_id="user-1",
+        user_role="developer",
+        oauth_provider=None,
+        oauth_id=None,
+        is_subagent=False,
+    )
+    captured = {}
+
+    def run(encoded: bytes):
+        captured.update(json.loads(encoded))
+        return 0, b'{"decision":"allow"}'
+
+    decision = HolGuardProvider(runner=run).evaluate(request)
+
+    assert decision.allow is True
+    assert captured["runtime_context"]["channel_user_id"] is None
+    assert captured["runtime_context"]["is_internal"] is False
+    assert captured["runtime_context"]["authz_attributes"] is None
+
+
+@pytest.mark.parametrize("value", [None, "not-a-number", float("inf"), float("nan")])
+def test_invalid_timeout_configuration_fails_with_sanitized_value_error(value):
+    with pytest.raises(ValueError, match="timeout_seconds must be a finite number"):
+        HolGuardProvider(timeout_seconds=value, runner=_runner({"decision": "allow"}))
+
+
+def test_workspace_is_resolved_once_for_payload_context(tmp_path):
+    workspace = tmp_path / "project" / ".." / "project"
+    captured = {}
+
+    def run(encoded: bytes):
+        captured.update(json.loads(encoded))
+        return 0, b'{"decision":"allow"}'
+
+    request = GuardrailRequest(tool_name="bash", tool_input={"command": "echo safe"})
+    decision = HolGuardProvider(workspace=workspace, runner=run).evaluate(request)
+
+    assert decision.allow is True
+    assert captured["cwd"] == str(workspace.resolve(strict=False))
