@@ -100,7 +100,10 @@ function decisionFromGuardOutput(payload) {
       normalizedDecision(layer.permissionDecision),
       normalizedDecision(layer.decision),
     ].filter(Boolean);
-    const policyAction = normalizedDecision(layer.policy_action);
+    const policyActions = [
+      normalizedDecision(layer.policy_action),
+      normalizedDecision(layer.policyAction),
+    ].filter(Boolean);
     const reason = nonEmptyString(hookOutput?.permissionDecisionReason)
       ?? nonEmptyString(layer.reason)
       ?? nonEmptyString(layer.review_hint);
@@ -109,16 +112,22 @@ function decisionFromGuardOutput(payload) {
       layer.blocked === true
       || layer.continue === false
       || values.some((value) => value === 'deny' || value === 'block')
-      || policyAction === 'block'
-      || policyAction === 'sandbox-required'
+      || policyActions.some((value) => value === 'block' || value === 'sandbox-required')
     ) {
       denyReason = reason ?? 'HOL Guard denied this TanStack AI tool call.';
     }
-    if (values.includes('ask') || policyAction === 'review' || policyAction === 'require-reapproval') {
+    if (
+      values.some((value) => value === 'ask' || value === 'review')
+      || policyActions.some((value) => value === 'review' || value === 'require-reapproval')
+    ) {
       sawReview = true;
       reviewReason = reason ?? reviewReason;
     }
-    if (values.includes('allow') || (layer.blocked === false && policyAction === 'allow')) {
+    if (
+      values.some((value) => value === 'allow' || value === 'warn')
+      || policyActions.some((value) => value === 'allow' || value === 'warn')
+      || (layer.blocked === false && policyActions.includes('allow'))
+    ) {
       sawAllow = true;
       allowReason = reason ?? allowReason;
     }
@@ -221,9 +230,10 @@ export function createHolGuardMiddleware(options = {}) {
   return {
     name: 'hol-guard',
     async onBeforeToolCall(ctx, hookCtx) {
-      const workspace = typeof workspaceOption === 'function'
+      const workspaceCandidate = typeof workspaceOption === 'function'
         ? workspaceOption(ctx, hookCtx)
-        : nonEmptyString(workspaceOption) ?? process.cwd();
+        : workspaceOption;
+      const workspace = nonEmptyString(workspaceCandidate) ?? process.cwd();
       let input;
       try {
         input = buildPayload(ctx, hookCtx, workspace);
