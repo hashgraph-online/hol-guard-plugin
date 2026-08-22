@@ -43,12 +43,12 @@ for (const decision of ['deny', 'review', 'ask', 'warn']) {
 }
 
 test('provider failure fails closed without leaking tool arguments', async () => {
-  const secret = 'super-secret-argument';
-  const run = async () => { throw new Error(`provider saw ${secret}`); };
-  const outcome = await executeWithPlugin(createHolGuardPlugin({ runner: run }), run, { token: secret });
+  const marker = 'raw-argument-marker';
+  const run = async () => { throw new Error(`provider saw ${marker}`); };
+  const outcome = await executeWithPlugin(createHolGuardPlugin({ runner: run }), run, { value: marker });
   assert.equal(outcome.executions, 0);
   assert.ok(outcome.error instanceof Error);
-  assert.equal(outcome.error.message.includes(secret), false);
+  assert.equal(outcome.error.message.includes(marker), false);
 });
 
 test('malformed provider output fails closed', async () => {
