@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const MAX_INPUT_BYTES = 24 * 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
@@ -296,8 +298,18 @@ async function main() {
   }
 }
 
-const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
-if (entry === import.meta.url) {
+export function isMainModule(argvPath = process.argv[1], moduleUrl = import.meta.url) {
+  if (!argvPath) return false;
+  const modulePath = fileURLToPath(moduleUrl);
+  const resolvedArgvPath = resolvePath(argvPath);
+  try {
+    return realpathSync(resolvedArgvPath) === realpathSync(modulePath);
+  } catch {
+    return resolvedArgvPath === resolvePath(modulePath);
+  }
+}
+
+if (isMainModule()) {
   main().catch(() => {
     process.stdout.write(`${JSON.stringify(deny('HOL Guard hook failed closed.'))}\n`);
   });
