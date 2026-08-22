@@ -135,6 +135,33 @@ def test_malformed_envelopes_fail_closed(case: dict) -> None:
     assert response.allowed is False
 
 
+@pytest.mark.parametrize("timeout_seconds", [0.0, -1.0, 30.001])
+def test_invalid_guard_timeout_fails_closed_before_custom_provider(timeout_seconds: float) -> None:
+    def should_not_run(*_):
+        raise AssertionError("decision provider must not run for invalid timeout")
+
+    response = evaluate_toolhive_webhook(
+        _request(),
+        decision_provider=should_not_run,
+        timeout_seconds=timeout_seconds,
+    )
+
+    assert response.allowed is False
+    assert response.reason == "hol_guard_timeout_invalid"
+
+
+def test_direct_guard_evaluator_rejects_unbounded_timeout_before_subprocess(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("subprocess must not run")),
+    )
+    with pytest.raises(HolGuardUnavailable, match="timeout must be"):
+        evaluate_with_hol_guard("tool", {}, {}, 31.0, "hol-guard")
+
+
 def test_payload_over_24k_fails_before_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         subprocess,
