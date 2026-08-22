@@ -11,9 +11,11 @@ It uses ToolHive's existing `validating-webhook` middleware contract. No ToolHiv
 - Guard `allow` maps to ToolHive `allowed: true`.
 - Guard `deny`, `review`, malformed decisions, timeouts, process failures, and adapter validation failures map to `allowed: false`.
 - ToolHive's validating middleware returns on `allowed: false` before invoking the downstream handler, so a denied call never reaches the MCP tool body.
-- The adapter caps inbound webhook bodies at 1 MiB, Guard decision payloads at 24 KiB, and Guard evaluation time at a configurable maximum of 30 seconds.
+- The adapter caps inbound webhook bodies at 1 MiB, Guard decision payloads at 24 KiB, Guard evaluation time at 30 seconds, request-body reads at 30 seconds, and concurrent HTTP requests at 256. Defaults are intentionally lower: 5 seconds for Guard/read timeouts and 32 concurrent requests.
+- Capacity is acquired before a handler thread is spawned. Saturated requests receive a fail-fast `503` instead of creating unbounded threads.
 - Only `server_name`, `backend_server`, `namespace`, and `transport` are forwarded as runtime context. Principal identity and source IP are deliberately excluded.
-- The HTTP service does not log request bodies, tool arguments, or Guard reasons. Denial responses use stable generic reason codes rather than echoing potentially sensitive tool content.
+- The HTTP service never logs request bodies, tool arguments, raw Guard output, or raw ToolHive UIDs. Operational logs contain HTTP status, a short SHA-256 UID reference, stable reason code, and elapsed time only.
+- Denial responses use stable generic reason codes rather than echoing potentially sensitive tool content.
 
 ToolHive's own webhook middleware also supports a `failure_policy`. Use `fail` for security enforcement so transport/webhook failures are denied rather than ignored.
 
@@ -29,7 +31,12 @@ HOL Guard remains local-first:
 
 ```bash
 hol-guard --version
-toolhive-hol-guard --host 127.0.0.1 --port 8787 --timeout 5
+toolhive-hol-guard \
+  --host 127.0.0.1 \
+  --port 8787 \
+  --timeout 5 \
+  --read-timeout 5 \
+  --max-concurrency 32
 ```
 
 For production, expose the webhook over HTTPS or an authenticated in-cluster transport. ToolHive requires HTTPS unless its development/in-cluster `insecure_skip_verify` option is deliberately enabled.
