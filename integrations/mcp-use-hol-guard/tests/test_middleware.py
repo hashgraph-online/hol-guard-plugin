@@ -27,7 +27,10 @@ async def _run(provider, *, arguments=None):
         return CallToolResult(content=[TextContent(type="text", text="executed")])
 
     manager = MiddlewareManager()
-    manager._record_telemetry = False
+    # Avoid test telemetry side effects without assuming this private implementation
+    # detail exists in future compatible mcp-use releases.
+    if hasattr(manager, "_record_telemetry"):
+        manager._record_telemetry = False
     manager.add_middleware(MCPUseHOLGuardMiddleware(provider))
     response = await manager.process_request(_context(arguments), downstream)
     return response, calls["count"]
