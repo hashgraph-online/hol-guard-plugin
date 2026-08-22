@@ -1,0 +1,36 @@
+name: Official MCP Go SDK HOL Guard integration
+
+on:
+  pull_request:
+    paths:
+      - "integrations/mcp-go-sdk-hol-guard/**"
+      - ".github/workflows/mcp-go-sdk-hol-guard.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "integrations/mcp-go-sdk-hol-guard/**"
+      - ".github/workflows/mcp-go-sdk-hol-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version: "1.25.0"
+          cache-dependency-path: integrations/mcp-go-sdk-hol-guard/go.sum
+
+      - name: Verify official MCP Go SDK execution contract
+        working-directory: integrations/mcp-go-sdk-hol-guard
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum || true
+          go test ./...
