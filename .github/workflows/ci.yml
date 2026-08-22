@@ -56,6 +56,12 @@ jobs:
       - name: Test Semantic Kernel HOL Guard integration
         run: dotnet test integrations/semantic-kernel-hol-guard/tests/HolGuard.SemanticKernel.Tests/HolGuard.SemanticKernel.Tests.csproj --configuration Release
 
+      - name: Test TanStack AI HOL Guard integration
+        working-directory: integrations/tanstack-ai-hol-guard
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm test
+
       - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
