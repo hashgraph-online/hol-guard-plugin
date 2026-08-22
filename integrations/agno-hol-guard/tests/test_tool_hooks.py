@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 
 import pytest
@@ -82,6 +83,11 @@ async def test_async_deny_and_review_never_execute_agno_entrypoint(action):
     assert counter["calls"] == 0
 
 
+def test_async_hook_factory_returns_coroutine_function_for_agno_detection():
+    hook = AsyncHolGuardToolHook(Provider(decision=GuardDecision(GuardAction.ALLOW)))
+    assert inspect.iscoroutinefunction(hook)
+
+
 def test_sync_allow_executes_exactly_once():
     counter = {"calls": 0}
     result = _sync_call(Provider(decision=GuardDecision(GuardAction.ALLOW)), counter)
@@ -99,6 +105,23 @@ async def test_async_allow_executes_exactly_once():
     assert result.status == "success"
     assert result.result == "executed:rm -rf /tmp/example"
     assert counter["calls"] == 1
+
+
+def test_sync_hook_fails_closed_if_tool_returns_awaitable():
+    counter = {"calls": 0}
+
+    async def asynchronous_tool(command: str):
+        counter["calls"] += 1
+        return command
+
+    fn = Function.from_callable(asynchronous_tool)
+    fn.tool_hooks = [HolGuardToolHook(Provider(decision=GuardDecision(GuardAction.ALLOW)))]
+    result = FunctionCall(function=fn, arguments={"command": "example"}).execute()
+
+    assert result.status == "success"
+    assert isinstance(result.result, ToolResult)
+    assert result.result.metadata["hol_guard"]["executed"] is False
+    assert counter["calls"] == 0
 
 
 @pytest.mark.parametrize("async_mode", [False, True])
