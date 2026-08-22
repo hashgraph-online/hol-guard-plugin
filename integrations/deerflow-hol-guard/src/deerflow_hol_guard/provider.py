@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import signal
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -47,26 +49,27 @@ def _bounded_payload(request: GuardrailRequest, workspace: Path | None) -> bytes
     tool_name = str(request.tool_name or "").strip()
     if not tool_name:
         raise ValueError("DeerFlow tool call is missing a tool name")
+    authz_attributes = getattr(request, "authz_attributes", None)
     payload = {
         "hook_event_name": "PreToolUse",
         "hookEventName": "PreToolUse",
         "tool_name": tool_name,
         "tool_input": _safe_json(request.tool_input or {}),
-        "tool_use_id": request.tool_call_id,
+        "tool_use_id": getattr(request, "tool_call_id", None),
         "cwd": str(workspace) if workspace is not None else None,
         "runtime_context": {
             "framework": "deerflow",
-            "agent_id": request.agent_id,
-            "thread_id": request.thread_id,
-            "run_id": request.run_id,
-            "user_id": request.user_id,
-            "user_role": request.user_role,
-            "oauth_provider": request.oauth_provider,
-            "oauth_id": request.oauth_id,
-            "channel_user_id": request.channel_user_id,
-            "is_subagent": request.is_subagent,
-            "is_internal": request.is_internal,
-            "authz_attributes": _safe_json(request.authz_attributes),
+            "agent_id": getattr(request, "agent_id", None),
+            "thread_id": getattr(request, "thread_id", None),
+            "run_id": getattr(request, "run_id", None),
+            "user_id": getattr(request, "user_id", None),
+            "user_role": getattr(request, "user_role", None),
+            "oauth_provider": getattr(request, "oauth_provider", None),
+            "oauth_id": getattr(request, "oauth_id", None),
+            "channel_user_id": getattr(request, "channel_user_id", None),
+            "is_subagent": bool(getattr(request, "is_subagent", False)),
+            "is_internal": bool(getattr(request, "is_internal", False)),
+            "authz_attributes": _safe_json(authz_attributes) if authz_attributes is not None else None,
         },
     }
     encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
@@ -148,14 +151,28 @@ def _decision(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _trusted_windows_taskkill() -> str | None:
+    """Resolve taskkill from the Windows API, never from PATH/environment variables."""
+    try:
+        import ctypes
+
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = ctypes.windll.kernel32.GetSystemDirectoryW(buffer, len(buffer))
+        if length <= 0 or length >= len(buffer):
+            return None
+        system_directory = Path(buffer.value)
+        if not system_directory.is_absolute():
+            return None
+        return str(system_directory / "taskkill.exe")
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
     pid = process.pid
     if os.name == "nt":
-        system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
-        if system_root and os.path.isabs(system_root):
-            taskkill = os.path.join(system_root, "System32", "taskkill.exe")
+        taskkill = _trusted_windows_taskkill()
+        if taskkill is not None:
             try:
                 subprocess.run(
                     [taskkill, "/PID", str(pid), "/T", "/F"],
@@ -167,22 +184,31 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
                 )
             except (OSError, subprocess.TimeoutExpired):
                 pass
+        if process.poll() is None and hasattr(signal, "CTRL_BREAK_EVENT"):
+            try:
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+                process.wait(timeout=0.25)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
     else:
         try:
             os.killpg(pid, signal.SIGTERM)
         except (OSError, ProcessLookupError):
             pass
-        try:
-            process.wait(timeout=0.25)
-        except subprocess.TimeoutExpired:
+        if process.poll() is None:
             try:
-                os.killpg(pid, signal.SIGKILL)
-            except (OSError, ProcessLookupError):
+                process.wait(timeout=0.25)
+            except subprocess.TimeoutExpired:
                 pass
-    try:
-        process.kill()
-    except OSError:
-        pass
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+    if process.poll() is None:
+        try:
+            process.kill()
+        except OSError:
+            pass
 
 
 def _read_bounded(stream: Any, output: bytearray, overflow: threading.Event, process: subprocess.Popen[bytes]) -> None:
@@ -206,7 +232,7 @@ def _subprocess_runner(
 ) -> tuple[int, bytes]:
     command = [executable, "guard", "hook", "--harness", "deerflow"]
     if workspace is not None:
-        command.extend(["--workspace", str(workspace.resolve(strict=False))])
+        command.extend(["--workspace", str(workspace)])
     command.append("--json")
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     process = subprocess.Popen(
@@ -228,20 +254,33 @@ def _subprocess_runner(
     ]
     for reader in readers:
         reader.start()
+    deadline = time.monotonic() + timeout_seconds
     try:
         process.stdin.write(payload)
         process.stdin.close()
     except (BrokenPipeError, OSError):
         _terminate_process_tree(process)
         raise RuntimeError("HOL Guard process rejected the DeerFlow request") from None
+    remaining = max(0.0, deadline - time.monotonic())
     try:
-        return_code = process.wait(timeout=timeout_seconds)
+        return_code = process.wait(timeout=remaining)
     except subprocess.TimeoutExpired:
         _terminate_process_tree(process)
         raise RuntimeError("HOL Guard review timed out") from None
-    finally:
+
+    for reader in readers:
+        remaining = max(0.0, deadline - time.monotonic())
+        reader.join(timeout=remaining)
+    if any(reader.is_alive() for reader in readers):
+        _terminate_process_tree(process)
+        for stream in (process.stdout, process.stderr):
+            try:
+                stream.close()
+            except OSError:
+                pass
         for reader in readers:
-            reader.join(timeout=1.0)
+            reader.join(timeout=0.25)
+        raise RuntimeError("HOL Guard output did not close within the DeerFlow deadline")
     if overflow.is_set():
         raise RuntimeError("HOL Guard output exceeded the bounded DeerFlow limit")
     return return_code, bytes(stdout)
@@ -262,8 +301,16 @@ class HolGuardProvider:
         **_: Any,
     ) -> None:
         self.executable = executable
-        self.workspace = Path(workspace).expanduser() if workspace is not None else None
-        self.timeout_seconds = max(0.25, min(MAX_TIMEOUT_SECONDS, float(timeout_seconds)))
+        self.workspace = (
+            Path(workspace).expanduser().resolve(strict=False) if workspace is not None else None
+        )
+        try:
+            parsed_timeout = float(timeout_seconds)
+        except (TypeError, ValueError):
+            raise ValueError("timeout_seconds must be a finite number") from None
+        if not math.isfinite(parsed_timeout):
+            raise ValueError("timeout_seconds must be a finite number")
+        self.timeout_seconds = max(0.25, min(MAX_TIMEOUT_SECONDS, parsed_timeout))
         self._runner = runner
 
     def _evaluate(self, request: GuardrailRequest) -> GuardrailDecision:
