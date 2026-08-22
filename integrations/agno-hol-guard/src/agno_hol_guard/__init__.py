@@ -73,14 +73,14 @@ class HolGuardToolHook:
         return result
 
 
-class AsyncHolGuardToolHook:
-    """Asynchronous Agno tool hook. Use with Agent.arun/aprint_response paths."""
+def AsyncHolGuardToolHook(
+    provider: DecisionProvider | None = None,
+) -> Callable[[str, Callable[..., Any], dict[str, Any]], Awaitable[Any]]:
+    """Return an actual coroutine function so Agno recognizes the hook as async."""
 
-    def __init__(self, provider: DecisionProvider | None = None) -> None:
-        self._provider = provider or LocalHolGuardProvider()
+    selected_provider = provider or LocalHolGuardProvider()
 
-    async def __call__(
-        self,
+    async def hook(
         function_name: str,
         function_call: Callable[..., Any],
         arguments: dict[str, Any],
@@ -90,7 +90,7 @@ class AsyncHolGuardToolHook:
             return call
 
         try:
-            decision = await self._provider.aevaluate(call)
+            decision = await selected_provider.aevaluate(call)
         except Exception:
             return _blocked_result("HOL Guard evaluation failed closed before tool execution", "unavailable")
 
@@ -103,6 +103,8 @@ class AsyncHolGuardToolHook:
 
         result = function_call(**dict(call.arguments))
         return await result if inspect.isawaitable(result) else result
+
+    return hook
 
 
 def _normalize_call(function_name: str, arguments: Mapping[str, Any] | Any) -> ToolCall | ToolResult:
