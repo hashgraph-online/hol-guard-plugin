@@ -118,7 +118,7 @@ def test_non_tool_methods_do_not_call_guard() -> None:
 
 
 @pytest.mark.parametrize(
-    "request",
+    "case",
     [
         {},
         {"version": "v9", "uid": "x", "mcp_request": {}},
@@ -130,8 +130,8 @@ def test_non_tool_methods_do_not_call_guard() -> None:
         },
     ],
 )
-def test_malformed_envelopes_fail_closed(request: dict) -> None:
-    response = evaluate_toolhive_webhook(request, decision_provider=lambda *_: GuardDecision("allow"))
+def test_malformed_envelopes_fail_closed(case: dict) -> None:
+    response = evaluate_toolhive_webhook(case, decision_provider=lambda *_: GuardDecision("allow"))
     assert response.allowed is False
 
 
