@@ -1,6 +1,7 @@
 {
   "name": "hol-guard",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "description": "Local pre-tool security enforcement for Gemini CLI using HOL Guard, with bundled security skills and MCP support.",
   "contextFileName": "skills${/}hol-guard${/}SKILL.md",
   "mcpServers": {
     "hol-guard": {
