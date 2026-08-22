@@ -1,0 +1,39 @@
+{
+  "name": "tanstack-ai-hol-guard",
+  "version": "0.1.0",
+  "description": "Local HOL Guard pre-tool middleware for TanStack AI",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "@tanstack/ai": ">=0.47.3 <1"
+  },
+  "devDependencies": {
+    "@tanstack/ai": "0.47.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hashgraph-online/hol-guard-plugin.git",
+    "directory": "integrations/tanstack-ai-hol-guard"
+  },
+  "keywords": [
+    "tanstack-ai",
+    "hol-guard",
+    "ai-security",
+    "tool-guardrail",
+    "middleware"
+  ]
+}
