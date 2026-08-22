@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
-import { dirname, resolve, sep } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const MAX_INPUT_BYTES = 24 * 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
@@ -25,7 +27,7 @@ export function resolveWorkspace({ cwd = process.cwd(), env = process.env } = {}
   const absolute = resolve(cwd);
   const marker = `${sep}.moltis${sep}hooks${sep}`;
   const markerIndex = absolute.lastIndexOf(marker);
-  if (markerIndex > 0) return absolute.slice(0, markerIndex);
+  if (markerIndex >= 0) return markerIndex === 0 ? sep : absolute.slice(0, markerIndex);
   return absolute;
 }
 
@@ -178,39 +180,39 @@ export function runLocalGuard(input, { workspace = resolveWorkspace(), command =
 
     let stdout = '';
     let stdoutBytes = 0;
-    let forcedError = null;
     let settled = false;
+    let timer;
     const settle = (error, value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       if (error) reject(error);
       else resolvePromise(value);
     };
-    const failAndTerminate = async (message) => {
-      if (forcedError) return;
-      forcedError = new Error(message);
-      await terminateProcessTree(child);
+    const failAndTerminate = (message, error = new Error(message)) => {
+      if (settled) return;
+      settle(error);
+      void terminateProcessTree(child);
     };
-    const timer = setTimeout(() => void failAndTerminate('HOL Guard review timed out'), timeoutMs);
+    timer = setTimeout(() => failAndTerminate('HOL Guard review timed out'), timeoutMs);
+    timer.unref?.();
 
-    child.once('error', (error) => settle(error));
+    child.once('error', (error) => failAndTerminate('HOL Guard process failed', error));
     child.stdout.on('data', (chunk) => {
       stdoutBytes += chunk.length;
       if (stdoutBytes > MAX_OUTPUT_BYTES) {
-        void failAndTerminate('HOL Guard output exceeded limit');
+        failAndTerminate('HOL Guard output exceeded limit');
         return;
       }
       stdout += chunk.toString('utf8');
     });
-    child.once('close', (code) => {
-      if (forcedError) {
-        settle(forcedError);
-        return;
-      }
-      settle(null, { code, stdout });
-    });
-    child.stdin.end(input);
+    child.once('close', (code) => settle(null, { code, stdout }));
+    child.stdin.once('error', (error) => failAndTerminate('HOL Guard input stream failed', error));
+    try {
+      child.stdin.end(input);
+    } catch (error) {
+      failAndTerminate('HOL Guard input stream failed', error);
+    }
   });
 }
 
@@ -268,6 +270,16 @@ export async function main() {
   process.exitCode = 1;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+function realpathOrResolve(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+const invokedPath = process.argv[1] ? realpathOrResolve(process.argv[1]) : null;
+const modulePath = realpathOrResolve(fileURLToPath(import.meta.url));
+if (invokedPath && invokedPath === modulePath) {
   await main();
 }
