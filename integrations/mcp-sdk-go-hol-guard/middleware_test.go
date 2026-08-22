@@ -114,3 +114,13 @@ func TestParseDecisionRejectsAmbiguousOutput(t *testing.T) {
 		t.Fatalf("unexpected parsed decision: %#v err=%v", decision, err)
 	}
 }
+
+func TestParseDecisionAcceptsMultilineJSON(t *testing.T) {
+	decision, err := parseDecision([]byte("{\n  \"hookSpecificOutput\": {\n    \"permissionDecision\": \"deny\"\n  }\n}\n"))
+	if err != nil {
+		t.Fatalf("parse multiline decision: %v", err)
+	}
+	if decision.Action != ActionDeny {
+		t.Fatalf("multiline decision action = %q, want %q", decision.Action, ActionDeny)
+	}
+}
