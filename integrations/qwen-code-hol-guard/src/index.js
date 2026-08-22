@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { isAbsolute, join } from 'node:path';
 import process from 'node:process';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -110,7 +111,7 @@ function safeJson(value, seen = new WeakSet(), depth = 0) {
   }
 }
 
-function buildPayload(context) {
+function buildPayload(context, resolvedCwd) {
   const toolName = nonEmpty(context?.toolName);
   if (!toolName) throw new Error('missing canonical tool name');
   const payload = {
@@ -119,7 +120,7 @@ function buildPayload(context) {
     tool_name: toolName,
     tool_input: safeJson(context.args ?? {}),
     tool_use_id: nonEmpty(context.callId),
-    cwd: nonEmpty(context.cwd),
+    cwd: resolvedCwd,
     runtime_context: {
       framework: 'qwen-code',
       session_id: nonEmpty(context.sessionId),
@@ -131,23 +132,32 @@ function buildPayload(context) {
   return serialized;
 }
 
+function trustedTaskkillPath() {
+  const systemRoot = nonEmpty(process.env.SystemRoot) ?? nonEmpty(process.env.WINDIR);
+  if (!systemRoot || !isAbsolute(systemRoot)) return null;
+  return join(systemRoot, 'System32', 'taskkill.exe');
+}
+
 async function terminateProcessTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const pid = child.pid;
   if (process.platform === 'win32' && typeof pid === 'number') {
-    await new Promise((resolve) => {
-      let killer;
-      try {
-        killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-      } catch {
-        resolve();
-        return;
-      }
-      const timer = setTimeout(resolve, TERMINATION_GRACE_MS);
-      timer.unref();
-      killer.once('error', () => { clearTimeout(timer); resolve(); });
-      killer.once('close', () => { clearTimeout(timer); resolve(); });
-    });
+    const taskkillPath = trustedTaskkillPath();
+    if (taskkillPath) {
+      await new Promise((resolve) => {
+        let killer;
+        try {
+          killer = spawn(taskkillPath, ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        } catch {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(resolve, TERMINATION_GRACE_MS);
+        timer.unref();
+        killer.once('error', () => { clearTimeout(timer); resolve(); });
+        killer.once('close', () => { clearTimeout(timer); resolve(); });
+      });
+    }
   } else if (typeof pid === 'number') {
     try { process.kill(-pid, 'SIGTERM'); } catch {}
     await new Promise((resolve) => setTimeout(resolve, TERMINATION_GRACE_MS));
@@ -222,7 +232,7 @@ export function createHolGuardToolInvocationGuard(options = {}) {
     const cwd = nonEmpty(context?.cwd) ?? process.cwd();
     let input;
     try {
-      input = buildPayload(context);
+      input = buildPayload(context, cwd);
     } catch {
       return { allowed: false, reason: 'HOL Guard could not safely serialize this tool invocation.' };
     }
@@ -230,6 +240,7 @@ export function createHolGuardToolInvocationGuard(options = {}) {
     try {
       result = await runner({ input, cwd, signal: context.signal, command: options.command, timeoutMs: options.timeoutMs });
     } catch {
+      if (context.signal?.aborted) return { allowed: false, reason: 'HOL Guard review was cancelled before execution.' };
       return { allowed: false, reason: 'HOL Guard review was unavailable and failed closed.' };
     }
     if (context.signal?.aborted) return { allowed: false, reason: 'HOL Guard review was cancelled before execution.' };
