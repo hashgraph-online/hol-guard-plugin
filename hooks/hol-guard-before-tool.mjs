@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { isAbsolute, join, resolve as resolvePath } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -130,32 +130,41 @@ function validateGeminiInput(payload) {
   return input;
 }
 
+function trustedTaskkillPath() {
+  const systemRoot = stringOrNull(process.env.SystemRoot) ?? stringOrNull(process.env.WINDIR);
+  if (!systemRoot || !isAbsolute(systemRoot)) return null;
+  return join(systemRoot, 'System32', 'taskkill.exe');
+}
+
 async function terminateProcessTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const pid = child.pid;
   if (process.platform === 'win32' && typeof pid === 'number') {
-    await new Promise((resolve) => {
-      let killer;
-      try {
-        killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
-          windowsHide: true,
-          stdio: 'ignore',
+    const taskkillPath = trustedTaskkillPath();
+    if (taskkillPath) {
+      await new Promise((resolve) => {
+        let killer;
+        try {
+          killer = spawn(taskkillPath, ['/PID', String(pid), '/T', '/F'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+        } catch {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(resolve, TERMINATION_GRACE_MS);
+        timer.unref();
+        killer.once('error', () => {
+          clearTimeout(timer);
+          resolve();
         });
-      } catch {
-        resolve();
-        return;
-      }
-      const timer = setTimeout(resolve, TERMINATION_GRACE_MS);
-      timer.unref();
-      killer.once('error', () => {
-        clearTimeout(timer);
-        resolve();
+        killer.once('close', () => {
+          clearTimeout(timer);
+          resolve();
+        });
       });
-      killer.once('close', () => {
-        clearTimeout(timer);
-        resolve();
-      });
-    });
+    }
   } else if (typeof pid === 'number') {
     try {
       process.kill(-pid, 'SIGTERM');
