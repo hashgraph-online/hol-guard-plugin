@@ -247,38 +247,53 @@ func (p LocalProvider) Evaluate(ctx context.Context, call ToolCall) (Decision, e
 }
 
 func parseDecision(output []byte) (Decision, error) {
-	lines := bytes.Split(bytes.TrimSpace(output), []byte("\n"))
+	trimmed := bytes.TrimSpace(output)
+	var payload map[string]any
+	if json.Unmarshal(trimmed, &payload) == nil {
+		if decision, ok := classifyDecisionPayload(payload); ok {
+			return decision, nil
+		}
+	}
+
+	lines := bytes.Split(trimmed, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := bytes.TrimSpace(lines[i])
 		if len(line) == 0 || line[0] != '{' {
 			continue
 		}
-		var payload map[string]any
+		payload = nil
 		if json.Unmarshal(line, &payload) != nil {
 			continue
 		}
-		if blocked, _ := payload["blocked"].(bool); blocked {
-			return Decision{Action: ActionDeny}, nil
-		}
-		if cont, ok := payload["continue"].(bool); ok && !cont {
-			return Decision{Action: ActionDeny}, nil
-		}
-		for _, key := range []string{"policy_action", "policyAction", "decision", "permissionDecision"} {
-			if value, ok := payload[key].(string); ok {
-				if d, ok := normalizeDecision(value); ok {
-					return d, nil
-				}
-			}
-		}
-		if hook, ok := payload["hookSpecificOutput"].(map[string]any); ok {
-			if value, ok := hook["permissionDecision"].(string); ok {
-				if d, ok := normalizeDecision(value); ok {
-					return d, nil
-				}
-			}
+		if decision, ok := classifyDecisionPayload(payload); ok {
+			return decision, nil
 		}
 	}
 	return Decision{}, errors.New("HOL Guard returned no authoritative decision")
+}
+
+func classifyDecisionPayload(payload map[string]any) (Decision, bool) {
+	if blocked, _ := payload["blocked"].(bool); blocked {
+		return Decision{Action: ActionDeny}, true
+	}
+	if cont, ok := payload["continue"].(bool); ok && !cont {
+		return Decision{Action: ActionDeny}, true
+	}
+	for _, key := range []string{"policy_action", "policyAction", "decision", "permissionDecision"} {
+		if value, ok := payload[key].(string); ok {
+			if decision, ok := normalizeDecision(value); ok {
+				return decision, true
+			}
+		}
+	}
+	if hook, ok := payload["hookSpecificOutput"].(map[string]any); ok {
+		if value, ok := hook["permissionDecision"].(string); ok {
+			if decision, ok := normalizeDecision(value); ok {
+				return decision, true
+			}
+		}
+	}
+	return Decision{}, false
 }
 
 func normalizeDecision(value string) (Decision, bool) {
