@@ -1,0 +1,17 @@
+{
+  "name": "qwen-code-hol-guard",
+  "version": "0.1.0",
+  "description": "Fail-closed HOL Guard adapter for Qwen Code's ToolInvocationGuard execution boundary.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
