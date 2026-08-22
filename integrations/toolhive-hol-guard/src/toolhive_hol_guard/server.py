@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import logging
+import socket
 import subprocess
+import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,7 +17,13 @@ TOOLHIVE_WEBHOOK_VERSION = "v0.1.0"
 MAX_HTTP_BODY_BYTES = 1 << 20
 MAX_GUARD_PAYLOAD_BYTES = 24 * 1024
 MAX_GUARD_TIMEOUT_SECONDS = 30.0
+MAX_REQUEST_READ_TIMEOUT_SECONDS = 30.0
+MAX_CONCURRENT_REQUESTS_LIMIT = 256
+DEFAULT_REQUEST_READ_TIMEOUT_SECONDS = 5.0
+DEFAULT_MAX_CONCURRENT_REQUESTS = 32
 _SAFE_CONTEXT_KEYS = ("server_name", "backend_server", "namespace", "transport")
+_LOGGER = logging.getLogger("toolhive_hol_guard")
+_BUSY_BODY = b'{"error":"server_busy"}'
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,46 +247,96 @@ def evaluate_toolhive_webhook(
     return _deny(uid, "hol_guard_unavailable", "HOL Guard decision unavailable")
 
 
+def _uid_ref(uid: object) -> str:
+    """Return a stable non-reversible request reference for operational logs."""
+
+    if not isinstance(uid, str) or not uid:
+        return "-"
+    return hashlib.sha256(uid.encode("utf-8", errors="replace")).hexdigest()[:12]
+
+
+def _reason_code(payload: Mapping[str, Any]) -> str:
+    reason = payload.get("reason") or payload.get("error")
+    if isinstance(reason, str) and reason:
+        return reason[:96].replace("\r", "_").replace("\n", "_")
+    if payload.get("allowed") is True:
+        return "allowed"
+    return "unspecified"
+
+
 def _handler_class(
     *,
     decision_provider: DecisionProvider,
     timeout_seconds: float,
     executable: str,
+    request_read_timeout_seconds: float,
 ) -> type[BaseHTTPRequestHandler]:
     class ToolHiveHolGuardHandler(BaseHTTPRequestHandler):
         server_version = "toolhive-hol-guard/0.1"
 
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-            # Do not log request bodies or tool arguments. Operators can use
-            # ToolHive/Guard receipts for decision observability.
+            # Suppress BaseHTTPRequestHandler's raw request-line logging. The
+            # structured record emitted by _write_json contains only bounded,
+            # non-sensitive operational metadata.
             return
 
-        def _write_json(self, status: int, payload: Mapping[str, Any]) -> None:
+        def _write_json(
+            self,
+            status: int,
+            payload: Mapping[str, Any],
+            *,
+            started_at: float,
+        ) -> None:
             body = json.dumps(dict(payload), ensure_ascii=True, separators=(",", ":")).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(body)
+            _LOGGER.info(
+                "toolhive_webhook status=%d uid_ref=%s reason=%s elapsed_ms=%d",
+                status,
+                _uid_ref(payload.get("uid")),
+                _reason_code(payload),
+                max(0, int((time.monotonic() - started_at) * 1000)),
+            )
 
         def do_POST(self) -> None:  # noqa: N802
+            started_at = time.monotonic()
             raw_length = self.headers.get("Content-Length")
             try:
                 content_length = int(raw_length) if raw_length is not None else -1
             except ValueError:
                 content_length = -1
             if content_length < 0 or content_length > MAX_HTTP_BODY_BYTES:
-                self._write_json(413, {"error": "request_too_large_or_length_missing"})
+                self._write_json(
+                    413,
+                    {"error": "request_too_large_or_length_missing"},
+                    started_at=started_at,
+                )
                 return
 
-            body = self.rfile.read(content_length)
+            self.connection.settimeout(request_read_timeout_seconds)
+            try:
+                body = self.rfile.read(content_length)
+            except (TimeoutError, socket.timeout):
+                self._write_json(408, {"error": "request_body_timeout"}, started_at=started_at)
+                return
+            except OSError:
+                self._write_json(422, {"error": "request_body_read_failed"}, started_at=started_at)
+                return
+            if len(body) != content_length:
+                self._write_json(422, {"error": "incomplete_request_body"}, started_at=started_at)
+                return
+
             try:
                 request = json.loads(body)
             except (UnicodeDecodeError, json.JSONDecodeError):
-                self._write_json(422, {"error": "invalid_webhook_json"})
+                self._write_json(422, {"error": "invalid_webhook_json"}, started_at=started_at)
                 return
             if not isinstance(request, dict):
-                self._write_json(422, {"error": "invalid_webhook_envelope"})
+                self._write_json(422, {"error": "invalid_webhook_envelope"}, started_at=started_at)
                 return
 
             response = evaluate_toolhive_webhook(
@@ -284,9 +345,50 @@ def _handler_class(
                 timeout_seconds=timeout_seconds,
                 executable=executable,
             )
-            self._write_json(200, response.as_dict())
+            self._write_json(200, response.as_dict(), started_at=started_at)
 
     return ToolHiveHolGuardHandler
+
+
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """Threaded server that acquires capacity before spawning handler threads."""
+
+    daemon_threads = True
+    block_on_close = False
+
+    def __init__(self, server_address: tuple[str, int], handler: type[BaseHTTPRequestHandler], *, max_concurrency: int):
+        self._request_slots = threading.BoundedSemaphore(max_concurrency)
+        super().__init__(server_address, handler)
+
+    def process_request(self, request: socket.socket, client_address: tuple[str, int]) -> None:
+        if not self._request_slots.acquire(blocking=False):
+            try:
+                response = (
+                    b"HTTP/1.1 503 Service Unavailable\r\n"
+                    b"Content-Type: application/json\r\n"
+                    + f"Content-Length: {len(_BUSY_BODY)}\r\n".encode("ascii")
+                    + b"Connection: close\r\n\r\n"
+                    + _BUSY_BODY
+                )
+                request.settimeout(1.0)
+                request.sendall(response)
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            _LOGGER.warning("toolhive_webhook status=503 uid_ref=- reason=concurrency_limit elapsed_ms=0")
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._request_slots.release()
+            raise
+
+    def process_request_thread(self, request: socket.socket, client_address: tuple[str, int]) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._request_slots.release()
 
 
 def serve(
@@ -294,27 +396,60 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8787,
     timeout_seconds: float = 5.0,
+    request_read_timeout_seconds: float = DEFAULT_REQUEST_READ_TIMEOUT_SECONDS,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENT_REQUESTS,
     executable: str = "hol-guard",
     decision_provider: DecisionProvider = evaluate_with_hol_guard,
 ) -> None:
     if not 0.0 < timeout_seconds <= MAX_GUARD_TIMEOUT_SECONDS:
         raise ValueError(f"timeout_seconds must be > 0 and <= {MAX_GUARD_TIMEOUT_SECONDS}")
+    if not 0.0 < request_read_timeout_seconds <= MAX_REQUEST_READ_TIMEOUT_SECONDS:
+        raise ValueError(
+            f"request_read_timeout_seconds must be > 0 and <= {MAX_REQUEST_READ_TIMEOUT_SECONDS}"
+        )
+    if not 1 <= max_concurrency <= MAX_CONCURRENT_REQUESTS_LIMIT:
+        raise ValueError(f"max_concurrency must be between 1 and {MAX_CONCURRENT_REQUESTS_LIMIT}")
     handler = _handler_class(
         decision_provider=decision_provider,
         timeout_seconds=timeout_seconds,
         executable=executable,
+        request_read_timeout_seconds=request_read_timeout_seconds,
     )
-    ThreadingHTTPServer((host, port), handler).serve_forever()
+    BoundedThreadingHTTPServer(
+        (host, port),
+        handler,
+        max_concurrency=max_concurrency,
+    ).serve_forever()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="HOL Guard validating webhook for ToolHive")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
-    parser.add_argument("--timeout", type=float, default=5.0)
+    parser.add_argument("--timeout", type=float, default=5.0, help="HOL Guard decision timeout in seconds")
+    parser.add_argument(
+        "--read-timeout",
+        type=float,
+        default=DEFAULT_REQUEST_READ_TIMEOUT_SECONDS,
+        help="Maximum seconds to wait for a declared webhook request body",
+    )
+    parser.add_argument(
+        "--max-concurrency",
+        type=int,
+        default=DEFAULT_MAX_CONCURRENT_REQUESTS,
+        help="Maximum concurrent HTTP requests before fail-fast 503",
+    )
     parser.add_argument("--hol-guard", default="hol-guard", dest="executable")
     args = parser.parse_args()
-    serve(host=args.host, port=args.port, timeout_seconds=args.timeout, executable=args.executable)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    serve(
+        host=args.host,
+        port=args.port,
+        timeout_seconds=args.timeout,
+        request_read_timeout_seconds=args.read_timeout,
+        max_concurrency=args.max_concurrency,
+        executable=args.executable,
+    )
 
 
 if __name__ == "__main__":
