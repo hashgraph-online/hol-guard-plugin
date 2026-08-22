@@ -3,8 +3,10 @@ package holguardmcpsdk
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +19,7 @@ import (
 const (
 	maxPayloadBytes        = 24 * 1024
 	maxDecisionOutputBytes = 64 * 1024
+	maxStderrBytes         = 4 * 1024
 )
 
 type Action string
@@ -109,6 +112,62 @@ func evaluateSafely(provider DecisionProvider, ctx context.Context, call ToolCal
 	return provider.Evaluate(ctx, call)
 }
 
+type boundedBuffer struct {
+	buf       bytes.Buffer
+	remaining int
+}
+
+func newBoundedBuffer(limit int) *boundedBuffer {
+	return &boundedBuffer{remaining: limit}
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	originalLen := len(p)
+	if b.remaining > 0 {
+		keep := len(p)
+		if keep > b.remaining {
+			keep = b.remaining
+		}
+		_, _ = b.buf.Write(p[:keep])
+		b.remaining -= keep
+	}
+	return originalLen, nil
+}
+
+func (b *boundedBuffer) Bytes() []byte {
+	return b.buf.Bytes()
+}
+
+func safeStderrSummary(stderr []byte) string {
+	lower := strings.ToLower(string(stderr))
+	for _, category := range []struct {
+		needle string
+		label  string
+	}{
+		{"permission denied", "permission-denied"},
+		{"no such file", "missing-resource"},
+		{"not found", "missing-resource"},
+		{"timeout", "timeout"},
+		{"deadline", "timeout"},
+		{"sandbox", "sandbox"},
+		{"sqlite", "local-state"},
+		{"database", "local-state"},
+		{"json", "invalid-output"},
+		{"parse", "invalid-output"},
+		{"policy", "policy-config"},
+		{"config", "policy-config"},
+	} {
+		if strings.Contains(lower, category.needle) {
+			return category.label
+		}
+	}
+	if len(stderr) == 0 {
+		return "stderr-empty"
+	}
+	digest := sha256.Sum256(stderr)
+	return fmt.Sprintf("stderr-sha256=%x", digest[:6])
+}
+
 type LocalProvider struct {
 	Executable string
 	Workspace  string
@@ -157,7 +216,8 @@ func (p LocalProvider) Evaluate(ctx context.Context, call ToolCall) (Decision, e
 	argv = append(argv, "--json")
 	cmd := exec.CommandContext(decisionCtx, executable, argv...)
 	cmd.Stdin = bytes.NewReader(encoded)
-	cmd.Stderr = io.Discard
+	stderr := newBoundedBuffer(maxStderrBytes)
+	cmd.Stderr = stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return Decision{}, errors.New("HOL Guard decision process could not start")
@@ -177,7 +237,11 @@ func (p LocalProvider) Evaluate(ctx context.Context, call ToolCall) (Decision, e
 		return Decision{}, errors.New("HOL Guard decision output exceeded adapter limit")
 	}
 	if err := cmd.Wait(); err != nil {
-		return Decision{}, errors.New("HOL Guard decision process failed")
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return Decision{}, fmt.Errorf("HOL Guard decision process failed (exit=%d, %s)", exitErr.ExitCode(), safeStderrSummary(stderr.Bytes()))
+		}
+		return Decision{}, fmt.Errorf("HOL Guard decision process failed (%s)", safeStderrSummary(stderr.Bytes()))
 	}
 	return parseDecision(output)
 }
@@ -212,6 +276,7 @@ func parseDecision(output []byte) (Decision, error) {
 					return d, nil
 				}
 			}
+		}
 	}
 	return Decision{}, errors.New("HOL Guard returned no authoritative decision")
 }
