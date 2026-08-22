@@ -1,0 +1,254 @@
+name: Publish tanstack-ai-hol-guard
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "integrations/tanstack-ai-hol-guard/**"
+      - ".github/workflows/publish-tanstack-ai-hol-guard.yml"
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: publish-tanstack-ai-hol-guard
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build, publish, and verify
+    runs-on: ubuntu-latest
+    env:
+      STATUS_CONTEXT: npm/tanstack-ai-hol-guard
+      PACKAGE_DIR: integrations/tanstack-ai-hol-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Resolve package metadata
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import process from 'node:process';
+
+          const packageJson = JSON.parse(
+            fs.readFileSync(path.join(process.env.PACKAGE_DIR, 'package.json'), 'utf8'),
+          );
+          if (!packageJson.name || !packageJson.version) {
+            throw new Error('package.json must define name and version');
+          }
+          fs.appendFileSync(
+            process.env.GITHUB_ENV,
+            `PACKAGE_NAME=${packageJson.name}\nPACKAGE_VERSION=${packageJson.version}\n`,
+          );
+          console.log(`Resolved ${packageJson.name} ${packageJson.version}`);
+          NODE
+
+      - name: Report publication pending
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d "{\"state\":\"pending\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"Building and checking ${PACKAGE_NAME} ${PACKAGE_VERSION}\"}"; then
+            echo "::warning::Unable to post pending ${STATUS_CONTEXT} status; publication will continue."
+          fi
+
+      - name: Build and validate package archive
+        id: build
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          set -euo pipefail
+          pack_dir="${RUNNER_TEMP}/tanstack-ai-hol-guard-pack"
+          pack_json="${RUNNER_TEMP}/tanstack-ai-hol-guard-pack.json"
+          rm -rf "$pack_dir"
+          mkdir -p "$pack_dir"
+          npm pack --json --pack-destination "$pack_dir" | tee "$pack_json"
+          test -s "$pack_json"
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import process from 'node:process';
+
+          const packJson = path.join(process.env.RUNNER_TEMP, 'tanstack-ai-hol-guard-pack.json');
+          const packDir = path.join(process.env.RUNNER_TEMP, 'tanstack-ai-hol-guard-pack');
+          const entries = JSON.parse(fs.readFileSync(packJson, 'utf8'));
+          if (!Array.isArray(entries) || entries.length !== 1 || typeof entries[0]?.filename !== 'string') {
+            throw new Error('npm pack did not return exactly one package filename');
+          }
+          const tarball = path.resolve(packDir, entries[0].filename);
+          if (path.dirname(tarball) !== path.resolve(packDir) || !tarball.endsWith('.tgz')) {
+            throw new Error('npm pack returned an unsafe package filename');
+          }
+          const stat = fs.statSync(tarball);
+          if (!stat.isFile() || stat.size === 0) {
+            throw new Error('npm pack tarball is missing or empty');
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, `PACK_TARBALL=${tarball}\n`);
+          console.log(`Validated package archive ${tarball}`);
+          NODE
+
+      - name: Check whether version is already published
+        id: npm_registry
+        run: |
+          set -euo pipefail
+          registry_error="${RUNNER_TEMP}/tanstack-ai-hol-guard-npm-view.err"
+          set +e
+          published="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --json 2>"$registry_error")"
+          npm_status=$?
+          set -e
+
+          if [ "$npm_status" -eq 0 ]; then
+            normalized="$(printf '%s' "$published" | tr -d '\"[:space:]')"
+            if [ "$normalized" != "${PACKAGE_VERSION}" ]; then
+              echo "Registry returned unexpected version: ${published}" >&2
+              exit 1
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${PACKAGE_NAME} ${PACKAGE_VERSION} is already published"
+          elif grep -Eiq 'E404|404[[:space:]]+Not Found|code[[:space:]]+E404' "$registry_error"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "${PACKAGE_NAME} ${PACKAGE_VERSION} is not yet published"
+          else
+            echo "npm registry lookup failed with exit code ${npm_status}:" >&2
+            cat "$registry_error" >&2
+            exit "$npm_status"
+          fi
+
+      - name: Require configured npm publisher
+        id: publisher_gate
+        if: steps.npm_registry.outputs.exists != 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "NPM_TOKEN is not available to this repository; refusing to improvise package publication." >&2
+            exit 1
+          fi
+          echo "npm publisher credential is configured"
+
+      - name: Publish validated archive to npm
+        id: publish
+        if: steps.npm_registry.outputs.exists != 'true' && steps.publisher_gate.outcome == 'success'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f "$PACK_TARBALL"
+          npm publish "$PACK_TARBALL" --access public
+
+      - name: Verify package is normally installable
+        id: verify
+        if: steps.npm_registry.outputs.exists == 'true' || steps.publish.outcome == 'success'
+        run: |
+          set -euo pipefail
+          verify_dir="${RUNNER_TEMP}/tanstack-ai-hol-guard-npm-verify"
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+          cd "$verify_dir"
+          npm init -y >/dev/null
+          for attempt in 1 2 3 4 5; do
+            if npm install --ignore-scripts --no-audit --no-fund \
+              "${PACKAGE_NAME}@${PACKAGE_VERSION}" \
+              "@tanstack/ai@0.47.3"; then
+              node --input-type=module <<NODE
+          import { createHolGuardMiddleware } from '${PACKAGE_NAME}';
+          const middleware = createHolGuardMiddleware({ runner: async () => ({ exitCode: 0, stdout: '{"decision":"deny"}', stderr: '' }) });
+          if (middleware?.name !== 'hol-guard' || typeof middleware?.onBeforeToolCall !== 'function') {
+            throw new Error('published middleware export contract is invalid');
+          }
+          console.log('${PACKAGE_NAME} is installable from npm with its TanStack AI peer');
+          NODE
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep 20
+            fi
+          done
+          echo "${PACKAGE_NAME} ${PACKAGE_VERSION} did not become installable within the verification window." >&2
+          exit 1
+
+      - name: Report terminal publication status
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          VERSION_ALREADY_EXISTS: ${{ steps.npm_registry.outputs.exists }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          REGISTRY_CHECK_OUTCOME: ${{ steps.npm_registry.outcome }}
+          PUBLISHER_GATE_OUTCOME: ${{ steps.publisher_gate.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          state="error"
+          description="npm publication or install verification ${JOB_STATUS}"
+          diagnostic_context="${STATUS_CONTEXT}/workflow-failed"
+          diagnostic_description="Publisher workflow failed before an exact stage could be identified"
+
+          if [ "${JOB_STATUS}" = "success" ]; then
+            state="success"
+            if [ "${VERSION_ALREADY_EXISTS}" = "true" ]; then
+              description="npm ${PACKAGE_NAME} ${PACKAGE_VERSION} already published and install verified"
+            else
+              description="npm ${PACKAGE_NAME} ${PACKAGE_VERSION} install verified"
+            fi
+          elif [ "${JOB_STATUS}" = "cancelled" ]; then
+            description="npm publication or install verification cancelled"
+            diagnostic_context="${STATUS_CONTEXT}/cancelled"
+            diagnostic_description="Publisher workflow was cancelled"
+          elif [ "${BUILD_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/build-failed"
+            diagnostic_description="npm package archive build failed"
+          elif [ "${REGISTRY_CHECK_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/registry-check-failed"
+            diagnostic_description="npm registry version lookup failed"
+          elif [ "${PUBLISHER_GATE_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/token-missing"
+            diagnostic_description="NPM_TOKEN is not configured"
+          elif [ "${PUBLISH_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/upload-failed"
+            diagnostic_description="npm publish failed"
+          elif [ "${VERIFY_OUTCOME}" = "failure" ]; then
+            diagnostic_context="${STATUS_CONTEXT}/install-verify-failed"
+            diagnostic_description="Published package failed clean install verification"
+          fi
+
+          if ! curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d "{\"state\":\"${state}\",\"context\":\"${STATUS_CONTEXT}\",\"description\":\"${description}\"}"; then
+            echo "::warning::Unable to post ${STATUS_CONTEXT} status (${state})."
+          fi
+
+          if [ "${state}" != "success" ]; then
+            if ! curl --fail-with-body --silent --show-error \
+              -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -d "{\"state\":\"error\",\"context\":\"${diagnostic_context}\",\"description\":\"${diagnostic_description}\"}"; then
+              echo "::warning::Unable to post ${diagnostic_context} status (error)."
+            fi
+          fi
