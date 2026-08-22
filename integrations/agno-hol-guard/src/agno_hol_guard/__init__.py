@@ -69,7 +69,10 @@ class HolGuardToolHook:
             close = getattr(result, "close", None)
             if callable(close):
                 close()
-            raise RuntimeError("HolGuardToolHook cannot execute an async Agno tool; use AsyncHolGuardToolHook")
+            return _blocked_result(
+                "HOL Guard refused an async tool on Agno's synchronous hook path; execution failed closed",
+                "invalid",
+            )
         return result
 
 
@@ -264,12 +267,12 @@ def _run_bounded(argv: list[str], encoded: bytes, timeout_seconds: float) -> tup
         process.wait()
         raise RuntimeError("HOL Guard decision timed out") from None
     finally:
-        reader.join(timeout=1.0)
+        # The child has either exited or been killed by this point. Closing the
+        # writer guarantees EOF on stdout, so wait for the drain thread to finish
+        # instead of imposing an unrelated second timeout that can create false
+        # fail-closed results under scheduler/pipe latency.
+        reader.join()
 
-    if reader.is_alive():
-        process.kill()
-        process.wait()
-        raise RuntimeError("HOL Guard decision output reader did not terminate")
     if overflow.is_set() or len(output) > _MAX_OUTPUT_BYTES:
         raise RuntimeError("HOL Guard decision output exceeded adapter limit")
     return bytes(output), returncode
