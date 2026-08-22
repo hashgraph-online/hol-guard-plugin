@@ -11,7 +11,6 @@ on:
 permissions:
   contents: read
   statuses: write
-  id-token: write
 
 concurrency:
   group: publish-tanstack-ai-hol-guard
@@ -76,17 +75,47 @@ jobs:
         working-directory: integrations/tanstack-ai-hol-guard
         run: |
           set -euo pipefail
-          rm -rf "${RUNNER_TEMP}/tanstack-ai-hol-guard-pack"
-          mkdir -p "${RUNNER_TEMP}/tanstack-ai-hol-guard-pack"
-          npm pack --json --pack-destination "${RUNNER_TEMP}/tanstack-ai-hol-guard-pack" | tee "${RUNNER_TEMP}/tanstack-ai-hol-guard-pack.json"
-          test -s "${RUNNER_TEMP}/tanstack-ai-hol-guard-pack.json"
-          test "$(find "${RUNNER_TEMP}/tanstack-ai-hol-guard-pack" -maxdepth 1 -type f -name '*.tgz' | wc -l)" -eq 1
+          pack_dir="${RUNNER_TEMP}/tanstack-ai-hol-guard-pack"
+          pack_json="${RUNNER_TEMP}/tanstack-ai-hol-guard-pack.json"
+          rm -rf "$pack_dir"
+          mkdir -p "$pack_dir"
+          npm pack --json --pack-destination "$pack_dir" | tee "$pack_json"
+          test -s "$pack_json"
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import process from 'node:process';
+
+          const packJson = path.join(process.env.RUNNER_TEMP, 'tanstack-ai-hol-guard-pack.json');
+          const packDir = path.join(process.env.RUNNER_TEMP, 'tanstack-ai-hol-guard-pack');
+          const entries = JSON.parse(fs.readFileSync(packJson, 'utf8'));
+          if (!Array.isArray(entries) || entries.length !== 1 || typeof entries[0]?.filename !== 'string') {
+            throw new Error('npm pack did not return exactly one package filename');
+          }
+          const tarball = path.resolve(packDir, entries[0].filename);
+          if (path.dirname(tarball) !== path.resolve(packDir) || !tarball.endsWith('.tgz')) {
+            throw new Error('npm pack returned an unsafe package filename');
+          }
+          const stat = fs.statSync(tarball);
+          if (!stat.isFile() || stat.size === 0) {
+            throw new Error('npm pack tarball is missing or empty');
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, `PACK_TARBALL=${tarball}\n`);
+          console.log(`Validated package archive ${tarball}`);
+          NODE
 
       - name: Check whether version is already published
         id: npm_registry
         run: |
           set -euo pipefail
-          if published="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --json 2>/dev/null)"; then
+          registry_error="${RUNNER_TEMP}/tanstack-ai-hol-guard-npm-view.err"
+          set +e
+          published="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --json 2>"$registry_error")"
+          npm_status=$?
+          set -e
+
+          if [ "$npm_status" -eq 0 ]; then
             normalized="$(printf '%s' "$published" | tr -d '\"[:space:]')"
             if [ "$normalized" != "${PACKAGE_VERSION}" ]; then
               echo "Registry returned unexpected version: ${published}" >&2
@@ -94,9 +123,13 @@ jobs:
             fi
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "${PACKAGE_NAME} ${PACKAGE_VERSION} is already published"
-          else
+          elif grep -Eiq 'E404|404[[:space:]]+Not Found|code[[:space:]]+E404' "$registry_error"; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "${PACKAGE_NAME} ${PACKAGE_VERSION} is not yet published"
+          else
+            echo "npm registry lookup failed with exit code ${npm_status}:" >&2
+            cat "$registry_error" >&2
+            exit "$npm_status"
           fi
 
       - name: Require configured npm publisher
@@ -106,18 +139,19 @@ jobs:
           echo "NPM_TOKEN is not available to this repository; refusing to improvise package publication." >&2
           exit 1
 
-      - name: Publish to npm
+      - name: Publish validated archive to npm
         id: publish
         if: steps.npm_registry.outputs.exists != 'true' && env.NPM_TOKEN != ''
-        working-directory: integrations/tanstack-ai-hol-guard
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          npm publish --access public --provenance
+          test -f "$PACK_TARBALL"
+          npm publish "$PACK_TARBALL" --access public
 
       - name: Verify package is normally installable
         id: verify
+        if: steps.npm_registry.outputs.exists == 'true' || steps.publish.outcome == 'success'
         run: |
           set -euo pipefail
           verify_dir="${RUNNER_TEMP}/tanstack-ai-hol-guard-npm-verify"
