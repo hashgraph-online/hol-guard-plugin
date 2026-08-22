@@ -14,6 +14,8 @@ from strands.interventions import Confirm, Deny, InterventionHandler, OnError, P
 _MAX_PAYLOAD_BYTES = 24 * 1024
 _MAX_OUTPUT_BYTES = 64 * 1024
 _MAX_TIMEOUT_SECONDS = 10.0
+_MAX_DECISION_LAYERS = 32
+_DECISION_WRAPPER_KEYS = ("data", "payload", "result", "hookSpecificOutput")
 
 
 class GuardAction(str, Enum):
@@ -30,7 +32,7 @@ class GuardDecision:
 @dataclass(frozen=True)
 class ToolCall:
     name: str
-    arguments: Mapping[str, Any]
+    arguments: Any
 
 
 class DecisionProvider(Protocol):
@@ -56,12 +58,11 @@ class HolGuardIntervention(InterventionHandler):
         if not tool_name:
             return Deny(reason="HOL Guard could not identify the tool; execution failed closed")
 
-        raw_arguments = tool_use.get("input") or {}
-        if not isinstance(raw_arguments, Mapping):
-            return Deny(reason="HOL Guard could not safely evaluate tool arguments")
+        if "input" not in tool_use:
+            return Deny(reason="HOL Guard could not safely evaluate missing tool input")
 
         try:
-            arguments = _json_arguments(raw_arguments)
+            arguments = _json_value(tool_use["input"])
             decision = await self._provider.evaluate(ToolCall(name=tool_name, arguments=arguments))
         except Exception:
             return Deny(reason="HOL Guard evaluation failed closed before tool execution")
@@ -78,14 +79,14 @@ class HolGuardIntervention(InterventionHandler):
         return Deny(reason="HOL Guard returned no authoritative decision; execution failed closed")
 
 
-def _json_arguments(value: Mapping[str, Any]) -> Mapping[str, Any]:
-    encoded = json.dumps(dict(value), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+def _json_value(value: Any) -> Any:
+    try:
+        encoded = json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("tool input must be JSON serializable") from exc
     if len(encoded) > _MAX_PAYLOAD_BYTES:
         raise ValueError("HOL Guard payload exceeds 24 KiB adapter limit")
-    normalized = json.loads(encoded)
-    if not isinstance(normalized, dict):
-        raise ValueError("tool arguments must encode as a JSON object")
-    return normalized
+    return json.loads(encoded)
 
 
 class LocalHolGuardProvider:
@@ -171,13 +172,24 @@ class LocalHolGuardProvider:
 
 
 def _parse_decision(output: bytes) -> GuardDecision:
+    stripped = output.strip()
+    if stripped:
+        try:
+            payload = json.loads(stripped)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            decision = _classify_payload(payload)
+            if decision is not None:
+                return decision
+
     for raw_line in reversed(output.splitlines()):
         line = raw_line.strip()
         if not line.startswith(b"{"):
             continue
         try:
             payload = json.loads(line)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             continue
         if not isinstance(payload, dict):
             continue
@@ -187,22 +199,41 @@ def _parse_decision(output: bytes) -> GuardDecision:
     raise RuntimeError("HOL Guard returned no authoritative decision")
 
 
-def _classify_payload(payload: Mapping[str, Any]) -> GuardDecision | None:
-    if payload.get("blocked") is True or payload.get("continue") is False:
-        return GuardDecision(GuardAction.DENY)
+def _decision_layers(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    layers: list[Mapping[str, Any]] = []
+    queue: list[Mapping[str, Any]] = [payload]
+    seen: set[int] = set()
+    while queue and len(layers) < _MAX_DECISION_LAYERS:
+        layer = queue.pop(0)
+        identity = id(layer)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        layers.append(layer)
+        for key in _DECISION_WRAPPER_KEYS:
+            nested = layer.get(key)
+            if isinstance(nested, Mapping):
+                queue.append(nested)
+    return layers
 
-    candidates: list[Any] = [
-        payload.get("policy_action"),
-        payload.get("policyAction"),
-        payload.get("decision"),
-        payload.get("permissionDecision"),
-    ]
-    hook = payload.get("hookSpecificOutput")
-    if isinstance(hook, Mapping):
-        candidates.append(hook.get("permissionDecision"))
+
+def _classify_payload(payload: Mapping[str, Any]) -> GuardDecision | None:
+    candidates: list[Any] = []
+    deny_flag = False
+    for layer in _decision_layers(payload):
+        if layer.get("blocked") is True or layer.get("continue") is False:
+            deny_flag = True
+        candidates.extend(
+            [
+                layer.get("policy_action"),
+                layer.get("policyAction"),
+                layer.get("decision"),
+                layer.get("permissionDecision"),
+            ]
+        )
 
     normalized = {str(value).strip().lower() for value in candidates if isinstance(value, str)}
-    if normalized & {"deny", "block", "sandbox-required"}:
+    if deny_flag or normalized & {"deny", "block", "sandbox-required"}:
         return GuardDecision(GuardAction.DENY)
     if normalized & {"ask", "review", "require-reapproval"}:
         return GuardDecision(GuardAction.REVIEW)
