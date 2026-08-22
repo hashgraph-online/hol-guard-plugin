@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 const MAX_INPUT_BYTES = 24 * 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const REVIEW_TIMEOUT_MS = 10_000;
+const TERMINATION_GRACE_MS = 250;
 
 function objectOrNull(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
@@ -127,21 +128,69 @@ function validateGeminiInput(payload) {
   return input;
 }
 
+async function terminateProcessTree(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const pid = child.pid;
+  if (process.platform === 'win32' && typeof pid === 'number') {
+    await new Promise((resolve) => {
+      let killer;
+      try {
+        killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+          windowsHide: true,
+          stdio: 'ignore',
+        });
+      } catch {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(resolve, TERMINATION_GRACE_MS);
+      timer.unref();
+      killer.once('error', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      killer.once('close', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  } else if (typeof pid === 'number') {
+    try {
+      process.kill(-pid, 'SIGTERM');
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, TERMINATION_GRACE_MS));
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {}
+  }
+  try {
+    child.kill('SIGKILL');
+  } catch {}
+}
+
 export function runLocalHolGuard(serializedInput, {
   command = 'hol-guard',
   workspace = process.env.GEMINI_CWD || process.env.GEMINI_PROJECT_DIR || process.cwd(),
   timeoutMs = REVIEW_TIMEOUT_MS,
 } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, ['guard', 'hook', '--harness', 'gemini', '--workspace', workspace], {
-      cwd: workspace,
-      shell: false,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    let child;
+    try {
+      child = spawn(command, ['guard', 'hook', '--harness', 'gemini', '--workspace', workspace], {
+        cwd: workspace,
+        detached: process.platform !== 'win32',
+        shell: false,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
     let stdout = '';
     let stderrBytes = 0;
     let settled = false;
+    let forcedError = null;
     let timer;
 
     const finish = (error, result) => {
@@ -151,15 +200,22 @@ export function runLocalHolGuard(serializedInput, {
       if (error) reject(error);
       else resolve(result);
     };
+    const failAfterTermination = (error) => {
+      if (settled || forcedError !== null) return;
+      forcedError = error;
+      void terminateProcessTree(child).finally(() => finish(forcedError));
+    };
 
-    child.once('error', (error) => finish(error));
+    child.once('error', (error) => {
+      if (forcedError !== null) return;
+      finish(error);
+    });
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
       const next = stdout + chunk;
       if (Buffer.byteLength(next, 'utf8') > MAX_OUTPUT_BYTES) {
-        try { child.kill('SIGKILL'); } catch {}
-        finish(new Error('guard_output_too_large'));
+        failAfterTermination(new Error('guard_output_too_large'));
         return;
       }
       stdout = next;
@@ -167,19 +223,23 @@ export function runLocalHolGuard(serializedInput, {
     child.stderr.on('data', (chunk) => {
       stderrBytes += Buffer.byteLength(chunk, 'utf8');
       if (stderrBytes > MAX_OUTPUT_BYTES) {
-        try { child.kill('SIGKILL'); } catch {}
-        finish(new Error('guard_stderr_too_large'));
+        failAfterTermination(new Error('guard_stderr_too_large'));
       }
     });
-    child.once('close', (code) => finish(null, { exitCode: code ?? 1, stdout }));
+    child.once('close', (code) => {
+      if (forcedError !== null) return;
+      finish(null, { exitCode: code ?? 1, stdout });
+    });
 
     timer = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch {}
-      finish(new Error('guard_timeout'));
+      failAfterTermination(new Error('guard_timeout'));
     }, Math.max(250, Math.min(30_000, Number(timeoutMs) || REVIEW_TIMEOUT_MS)));
     timer.unref();
 
-    child.stdin.once('error', (error) => finish(error));
+    child.stdin.once('error', (error) => {
+      if (forcedError !== null) return;
+      finish(error);
+    });
     child.stdin.end(serializedInput);
   });
 }
