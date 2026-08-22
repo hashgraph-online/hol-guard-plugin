@@ -34,4 +34,15 @@ jobs:
         run: python -m pip install -e 'integrations/agno-hol-guard[test]'
 
       - name: Verify Agno tool-hook execution contract
-        run: pytest integrations/agno-hol-guard/tests -q
+        run: |
+          set -o pipefail
+          pytest integrations/agno-hol-guard/tests -q 2>&1 | tee "${RUNNER_TEMP}/agno-contract.log"
+
+      - name: Upload Agno contract diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agno-contract-diagnostics
+          path: ${{ runner.temp }}/agno-contract.log
+          if-no-files-found: error
+          retention-days: 3
