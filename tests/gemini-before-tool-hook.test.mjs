@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   classifyGuardDecision,
   evaluateBeforeTool,
+  isMainModule,
   parseGuardOutput,
 } from '../hooks/hol-guard-before-tool.mjs';
 
@@ -36,6 +41,18 @@ test('deny outranks nested allow', () => {
     classifyGuardDecision({ decision: 'allow', result: { decision: 'deny', reason: 'policy denied' } }),
     { kind: 'deny', reason: 'policy denied' },
   );
+});
+
+test('symlinked extension hook paths still resolve as the executable entrypoint', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'hol-guard-gemini-hook-'));
+  const target = fileURLToPath(new URL('../hooks/hol-guard-before-tool.mjs', import.meta.url));
+  const symlink = join(directory, 'hol-guard-before-tool.mjs');
+  try {
+    symlinkSync(target, symlink);
+    assert.equal(isMainModule(symlink, new URL('../hooks/hol-guard-before-tool.mjs', import.meta.url).href), true);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('allow executes the downstream Gemini tool exactly once', async () => {
