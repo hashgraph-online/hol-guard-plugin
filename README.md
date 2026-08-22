@@ -1,11 +1,26 @@
-# HOL Guard Plugin
+# HOL Guard Plugin: Security for AI Agent Ecosystems
 
 [![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fguard%2Fhashgraph-online%2Fhol-guard-plugin&style=flat-square)](https://hol.org/guard)
+[![CI](https://img.shields.io/github/actions/workflow/status/hashgraph-online/hol-guard-plugin/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/hashgraph-online/hol-guard-plugin/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/hashgraph-online/hol-guard-plugin?style=social)](https://github.com/hashgraph-online/hol-guard-plugin/stargazers)
 [![skills.sh](https://skills.sh/b/hashgraph-online/hol-guard-plugin)](https://skills.sh/hashgraph-online/hol-guard-plugin)
 
-Codex and DeepSeek Harness plugin for HOL Guard, the local AI security layer from [`hol-guard`](https://github.com/hashgraph-online/hol-guard).
+| ![HOL Guard Plugin logo](assets/logo.svg) | **Bring HOL Guard protection to the AI tools you already use.** This repository packages integrations for AI harnesses, skills, MCP servers, agent frameworks, and plugin marketplaces.<br><br>[Install HOL Guard](https://hol.org/guard/activate)<br>[Browse integrations](#choose-an-integration)<br>[Guard source](https://github.com/hashgraph-online/hol-guard)<br>[Report an issue](https://github.com/hashgraph-online/hol-guard-plugin/issues) |
+| :--- | :--- |
 
-HOL Guard protects local AI harnesses before tools run. It can inspect Codex, Claude Code, Copilot CLI, Cursor, DeepSeek Harness, Gemini, Hermes, OpenClaw, OpenCode, and Antigravity surfaces, then route risky changes through local approvals and receipts.
+HOL Guard Plugin is the ecosystem integration repository for [`hol-guard`](https://github.com/hashgraph-online/hol-guard), the local-first security layer for AI agents. It is not limited to Codex or DeepSeek Harness. It provides native harness integrations, portable security skills, MCP configuration, framework middleware, and marketplace-ready packages that connect supported AI toolchains to HOL Guard's policy, approval, and evidence boundaries.
+
+## Choose an integration
+
+| What you use | Start here |
+| :--- | :--- |
+| **AI coding harnesses** | Install HOL Guard, then use the [supported harness commands](#supported-harness-systems). |
+| **DeepSeek Harness** | Add the native DSH bundle described in [Install in DeepSeek Harness](#install-in-deepseek-harness). |
+| **Codex and compatible skill clients** | Install the bundled [`hol-guard`](skills/hol-guard/SKILL.md) or [`plugin-scanner`](skills/plugin-scanner/SKILL.md) skill. |
+| **MCP clients and servers** | Use the local [HOL Guard MCP server](#mcp-server) or a reviewed SDK middleware under [`integrations/`](integrations/). |
+| **Agent frameworks** | Choose a reviewed adapter under [`integrations/`](integrations/) for Agno, CrewAI, LangChain, Microsoft Agent Framework, Pydantic AI, Semantic Kernel, Spring AI, Strands, TanStack AI, or ToolHive. |
+| **Plugin marketplaces** | Use the included Codex, Gemini, Kimi, Kiro, ClawHub, Spec Kit, and marketplace distribution manifests. |
 
 ## Install in DeepSeek Harness
 
