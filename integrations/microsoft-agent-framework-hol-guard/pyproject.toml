@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "microsoft-agent-framework-hol-guard"
+version = "0.1.0"
+description = "Fail-closed HOL Guard FunctionMiddleware for Microsoft Agent Framework"
+requires-python = ">=3.10"
+dependencies = ["agent-framework-core==1.15.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3", "pytest-asyncio>=0.25"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/microsoft_agent_framework_hol_guard"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
