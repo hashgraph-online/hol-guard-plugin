@@ -62,6 +62,19 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npm test
 
+      - name: Test Qwen Code HOL Guard integration
+        env:
+          QWEN_COMMIT: 6bbb273a86c6e9087aeb98aa6c5a65bcbbc0fa47
+          QWEN_SOURCE: ${{ runner.temp }}/qwen-code
+        run: |
+          git clone --filter=blob:none https://github.com/QwenLM/qwen-code.git "$QWEN_SOURCE"
+          git -C "$QWEN_SOURCE" checkout --detach "$QWEN_COMMIT"
+          grep -q "ToolInvocationGuard" "$QWEN_SOURCE/packages/core/src/config/config.ts"
+          grep -q "toolInvocationGuard" "$QWEN_SOURCE/packages/core/src/config/config.ts"
+          grep -q "zero executor calls" "$QWEN_SOURCE/docs/design/2026-07-30-host-tool-invocation-guard.md"
+          npm --prefix integrations/qwen-code-hol-guard install --ignore-scripts --no-audit --no-fund
+          npm --prefix integrations/qwen-code-hol-guard test
+
       - name: Install and build pinned official DSH runtime
         env:
           DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
