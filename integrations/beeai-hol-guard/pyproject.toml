@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "beeai-hol-guard"
+version = "0.1.0"
+description = "Optional HOL Guard pre-tool middleware for BeeAI Framework"
+requires-python = ">=3.11,<3.14"
+dependencies = ["beeai-framework==0.1.83"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3", "pytest-asyncio>=0.25"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/beeai_hol_guard"]
