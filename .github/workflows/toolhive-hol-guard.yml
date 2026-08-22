@@ -1,0 +1,37 @@
+name: ToolHive HOL Guard integration
+
+on:
+  pull_request:
+    paths:
+      - "integrations/toolhive-hol-guard/**"
+      - ".github/workflows/toolhive-hol-guard.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "integrations/toolhive-hol-guard/**"
+      - ".github/workflows/toolhive-hol-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Validate ToolHive webhook contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install package and test dependencies
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/toolhive-hol-guard-venv"
+          source "${RUNNER_TEMP}/toolhive-hol-guard-venv/bin/activate"
+          python -m pip install --upgrade pip
+          python -m pip install "./integrations/toolhive-hol-guard[test]"
+
+      - name: Run ToolHive validating-webhook contract tests
+        run: |
+          source "${RUNNER_TEMP}/toolhive-hol-guard-venv/bin/activate"
+          python -m pytest -q integrations/toolhive-hol-guard/tests
