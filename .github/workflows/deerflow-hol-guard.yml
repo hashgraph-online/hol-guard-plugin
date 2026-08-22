@@ -1,0 +1,59 @@
+name: DeerFlow HOL Guard
+
+on:
+  pull_request:
+    paths:
+      - "integrations/deerflow-hol-guard/**"
+      - ".github/workflows/deerflow-hol-guard.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "integrations/deerflow-hol-guard/**"
+      - ".github/workflows/deerflow-hol-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: DeerFlow GuardrailProvider contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a0798404d4ec80f535e168e2e4f22b324ed5c2ae # v6.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@e6b9a48e7110227672392af4820f4cd33bedc423 # v7.3.1
+        with:
+          version: "0.8.14"
+
+      - name: Install pinned DeerFlow and integration
+        env:
+          DEERFLOW_COMMIT: f1f4af99bbf1cffb83a80744bf6e4a44ee8f24be
+          DEERFLOW_SOURCE: ${{ runner.temp }}/deer-flow
+        run: |
+          git clone --filter=blob:none https://github.com/bytedance/deer-flow.git "$DEERFLOW_SOURCE"
+          git -C "$DEERFLOW_SOURCE" checkout --detach "$DEERFLOW_COMMIT"
+          uv pip install --system -e "$DEERFLOW_SOURCE/backend/packages/harness" -e "./integrations/deerflow-hol-guard[test]"
+
+      - name: Verify pinned DeerFlow provider contract
+        env:
+          DEERFLOW_SOURCE: ${{ runner.temp }}/deer-flow
+        run: |
+          grep -F 'class GuardrailProvider(Protocol)' "$DEERFLOW_SOURCE/backend/packages/harness/deerflow/guardrails/provider.py"
+          grep -F 'decision = self.provider.evaluate(gr)' "$DEERFLOW_SOURCE/backend/packages/harness/deerflow/guardrails/middleware.py"
+          grep -F 'decision = await self.provider.aevaluate(gr)' "$DEERFLOW_SOURCE/backend/packages/harness/deerflow/guardrails/middleware.py"
+          grep -F 'return handler(request)' "$DEERFLOW_SOURCE/backend/packages/harness/deerflow/guardrails/middleware.py"
+          grep -F 'return await handler(request)' "$DEERFLOW_SOURCE/backend/packages/harness/deerflow/guardrails/middleware.py"
+
+      - name: Test HOL Guard DeerFlow provider through real middleware
+        working-directory: integrations/deerflow-hol-guard
+        run: pytest -q
