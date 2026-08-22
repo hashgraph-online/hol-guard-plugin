@@ -1,0 +1,42 @@
+name: Moltis HOL Guard contract
+
+on:
+  pull_request:
+    paths:
+      - "integrations/moltis-hol-guard/**"
+      - ".github/workflows/moltis-hol-guard.yml"
+  push:
+    branches: [main]
+    paths:
+      - "integrations/moltis-hol-guard/**"
+      - ".github/workflows/moltis-hol-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Verify pinned Moltis hook contract
+        env:
+          MOLTIS_COMMIT: 6bd2d118cc4b6f06b62a89e80e7f3310a937b5ff
+          MOLTIS_SOURCE: ${{ runner.temp }}/moltis
+        run: |
+          git clone --filter=blob:none https://github.com/moltis-org/moltis.git "$MOLTIS_SOURCE"
+          git -C "$MOLTIS_SOURCE" checkout --detach "$MOLTIS_COMMIT"
+          grep -q 'BeforeToolCall' "$MOLTIS_SOURCE/crates/common/src/hooks.rs"
+          grep -q 'exit_code == 1' "$MOLTIS_SOURCE/crates/plugins/src/shell_hook.rs"
+          grep -q 'HookAction::Block' "$MOLTIS_SOURCE/crates/plugins/src/shell_hook.rs"
+          grep -q 'hook handler failed' "$MOLTIS_SOURCE/crates/common/src/hooks.rs"
+
+      - name: Test Moltis adapter contract
+        run: node --test integrations/moltis-hol-guard/handler.test.mjs
