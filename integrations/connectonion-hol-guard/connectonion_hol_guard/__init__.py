@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from connectonion.core.events import before_each_tool
 
@@ -61,7 +63,7 @@ def _classify_guard_decision(payload: dict[str, Any] | None) -> str | None:
         actions = {_non_empty(value).lower() for value in raw_actions if _non_empty(value)}
         deny = deny or layer.get("blocked") is True or layer.get("continue") is False or bool(decisions & {"deny", "block"}) or bool(actions & {"block", "sandbox-required"})
         review = review or bool(decisions & {"review", "ask"}) or bool(actions & {"review", "require-reapproval"})
-        allow = allow or bool(decisions & {"allow", "warn"}) or bool(actions & {"allow", "warn"})
+        allow = allow or "allow" in decisions or "allow" in actions
         for key in ("data", "payload", "result"):
             nested = _object(layer.get(key))
             if nested is not None:
@@ -75,23 +77,85 @@ def _classify_guard_decision(payload: dict[str, Any] | None) -> str | None:
     return None
 
 
+def _read_bounded_stdout(stream: BinaryIO) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        read_limit = min(8192, MAX_OUTPUT_BYTES + 1 - total)
+        chunk = stream.read(read_limit)
+        if not chunk:
+            return b"".join(chunks)
+        total += len(chunk)
+        if total > MAX_OUTPUT_BYTES:
+            raise RuntimeError("HOL Guard output exceeded limit")
+        chunks.append(chunk)
+
+
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=1.0)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        pass
+
+
 def _run_guard(encoded: str, *, workspace: Path, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> tuple[int, str]:
     command = os.environ.get("HOL_GUARD_BIN", "hol-guard")
-    completed = subprocess.run(
+    process = subprocess.Popen(
         [command, "guard", "hook", "--harness", "generic", "--workspace", str(workspace)],
-        input=encoded,
-        text=True,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         cwd=workspace,
         shell=False,
-        timeout=timeout,
-        check=False,
     )
-    stdout = completed.stdout or ""
-    if len(stdout.encode("utf-8")) > MAX_OUTPUT_BYTES:
-        raise RuntimeError("HOL Guard output exceeded limit")
-    return completed.returncode, stdout
+    if process.stdin is None or process.stdout is None:
+        _terminate_process(process)
+        raise RuntimeError("HOL Guard process streams unavailable")
+
+    deadline = time.monotonic() + timeout
+    output: dict[str, bytes] = {}
+    failure: dict[str, BaseException] = {}
+
+    def read_stdout() -> None:
+        try:
+            output["stdout"] = _read_bounded_stdout(process.stdout)
+        except BaseException as exc:  # surfaced in the caller thread after terminating the child
+            failure["error"] = exc
+            _terminate_process(process)
+
+    try:
+        process.stdin.write(encoded.encode("utf-8"))
+        process.stdin.close()
+        reader = threading.Thread(target=read_stdout, daemon=True)
+        reader.start()
+        reader.join(max(0.0, deadline - time.monotonic()))
+        if reader.is_alive():
+            _terminate_process(process)
+            reader.join(1.0)
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        if "error" in failure:
+            raise failure["error"]
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _terminate_process(process)
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        returncode = process.wait(timeout=remaining)
+        try:
+            stdout = output.get("stdout", b"").decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("HOL Guard output was not valid UTF-8") from exc
+        return returncode, stdout
+    finally:
+        _terminate_process(process)
+        try:
+            process.stdout.close()
+        except OSError:
+            pass
 
 
 def _guard_payload(agent: Any, pending: dict[str, Any], workspace: Path) -> dict[str, Any]:
@@ -117,7 +181,10 @@ def evaluate_pending_tool(agent: Any, *, workspace: Path | None = None) -> None:
         raise ValueError("HOL Guard could not validate the pending ConnectOnion tool call")
     effective_workspace = (workspace or Path.cwd()).expanduser().resolve()
     payload = _guard_payload(agent, pending, effective_workspace)
-    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+    try:
+        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ValueError("HOL Guard could not validate the ConnectOnion tool request") from exc
     if len(encoded.encode("utf-8")) > MAX_PAYLOAD_BYTES:
         raise ValueError("HOL Guard blocked an oversized ConnectOnion tool request")
     try:
