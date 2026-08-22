@@ -105,27 +105,27 @@ async def test_async_allow_executes_exactly_once():
 @pytest.mark.asyncio
 async def test_provider_failure_fails_closed_without_argument_leakage(async_mode):
     counter = {"calls": 0}
-    secret = "token-super-secret"
-    provider = Provider(error=RuntimeError(f"failure near {secret}"))
+    marker = "sensitive-value-that-must-not-be-returned"
+    provider = Provider(error=RuntimeError(f"failure near {marker}"))
 
     if async_mode:
-        async def guarded(secret_value: str):
+        async def guarded(opaque_value: str):
             counter["calls"] += 1
-            return secret_value
+            return opaque_value
 
         fn = Function.from_callable(guarded)
         fn.tool_hooks = [AsyncHolGuardToolHook(provider)]
-        result = await FunctionCall(function=fn, arguments={"secret_value": secret}).aexecute()
+        result = await FunctionCall(function=fn, arguments={"opaque_value": marker}).aexecute()
     else:
-        def guarded(secret_value: str):
+        def guarded(opaque_value: str):
             counter["calls"] += 1
-            return secret_value
+            return opaque_value
 
         fn = Function.from_callable(guarded)
         fn.tool_hooks = [HolGuardToolHook(provider)]
-        result = FunctionCall(function=fn, arguments={"secret_value": secret}).execute()
+        result = FunctionCall(function=fn, arguments={"opaque_value": marker}).execute()
 
     assert result.status == "success"
     assert isinstance(result.result, ToolResult)
-    assert secret not in result.result.content
+    assert marker not in result.result.content
     assert counter["calls"] == 0
