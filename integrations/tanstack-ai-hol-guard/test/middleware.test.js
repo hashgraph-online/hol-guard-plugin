@@ -108,9 +108,16 @@ function toolCallingAdapter(name) {
   };
 }
 
-async function runWithDecision({ provider, stdout, exitCode = 0, approve = undefined }) {
+async function runWithDecision({
+  provider,
+  stdout,
+  exitCode = 0,
+  approve = undefined,
+  workspace = process.cwd(),
+}) {
   let executions = 0;
   const seenPayloads = [];
+  const seenWorkspaces = [];
   const dangerousAction = toolDefinition({
     name: 'dangerousAction',
     description: 'A test action whose execution is observable',
@@ -120,9 +127,10 @@ async function runWithDecision({ provider, stdout, exitCode = 0, approve = undef
   });
 
   const middleware = createHolGuardMiddleware({
-    workspace: process.cwd(),
-    runner: async ({ input }) => {
+    workspace,
+    runner: async ({ input, workspace: resolvedWorkspace }) => {
       seenPayloads.push(JSON.parse(input));
+      seenWorkspaces.push(resolvedWorkspace);
       return { exitCode, stdout, stderr: '' };
     },
     approve,
@@ -144,7 +152,7 @@ async function runWithDecision({ provider, stdout, exitCode = 0, approve = undef
     error = caught;
   }
 
-  return { executions, seenPayloads, chunks, error };
+  return { executions, seenPayloads, seenWorkspaces, chunks, error };
 }
 
 test('authoritative deny prevents the real TanStack server tool from executing', async () => {
@@ -157,6 +165,20 @@ test('authoritative deny prevents the real TanStack server tool from executing',
   assert.equal(result.seenPayloads.length, 1);
   assert.equal(result.seenPayloads[0].tool_name, 'dangerousAction');
   assert.equal(result.seenPayloads[0].runtime_context.framework, 'tanstack-ai');
+});
+
+test('warn decisions remain allow-equivalent and execute exactly once', async () => {
+  const byDecision = await runWithDecision({
+    provider: 'provider-one',
+    stdout: JSON.stringify({ decision: 'warn', reason: 'allowed with warning' }),
+  });
+  assert.equal(byDecision.executions, 1);
+
+  const byPolicyAction = await runWithDecision({
+    provider: 'provider-two',
+    stdout: JSON.stringify({ policyAction: 'warn', reason: 'allowed with warning' }),
+  });
+  assert.equal(byPolicyAction.executions, 1);
 });
 
 test('malformed or unavailable Guard decisions fail closed before execution', async () => {
@@ -174,20 +196,34 @@ test('malformed or unavailable Guard decisions fail closed before execution', as
   assert.equal(failing.executions, 0);
 });
 
-test('native review approval allows exactly one execution', async () => {
-  let approvals = 0;
-  const result = await runWithDecision({
+test('native review approval allows exactly one execution for ask and review decisions', async () => {
+  let askApprovals = 0;
+  const askResult = await runWithDecision({
     provider: 'provider-two',
     stdout: JSON.stringify({ decision: 'ask', reason: 'confirm this action' }),
     approve: async ({ reason }) => {
-      approvals += 1;
+      askApprovals += 1;
       assert.equal(reason, 'confirm this action');
       return true;
     },
   });
 
-  assert.equal(approvals, 1);
-  assert.equal(result.executions, 1);
+  assert.equal(askApprovals, 1);
+  assert.equal(askResult.executions, 1);
+
+  let reviewApprovals = 0;
+  const reviewResult = await runWithDecision({
+    provider: 'provider-one',
+    stdout: JSON.stringify({ decision: 'review', reason: 'review this action' }),
+    approve: async ({ reason }) => {
+      reviewApprovals += 1;
+      assert.equal(reason, 'review this action');
+      return true;
+    },
+  });
+
+  assert.equal(reviewApprovals, 1);
+  assert.equal(reviewResult.executions, 1);
 });
 
 test('review without an approval resolver remains fail closed', async () => {
@@ -196,4 +232,36 @@ test('review without an approval resolver remains fail closed', async () => {
     stdout: JSON.stringify({ policy_action: 'review', review_hint: 'approval required' }),
   });
   assert.equal(result.executions, 0);
+});
+
+test('camelCase policyAction is authoritative and deny wins over allow aliases', async () => {
+  const camelCaseDeny = await runWithDecision({
+    provider: 'provider-one',
+    stdout: JSON.stringify({ policyAction: 'block', reason: 'blocked by camelCase policy action' }),
+  });
+  assert.equal(camelCaseDeny.executions, 0);
+
+  const conflicting = await runWithDecision({
+    provider: 'provider-two',
+    stdout: JSON.stringify({ decision: 'allow', policyAction: 'sandbox-required' }),
+  });
+  assert.equal(conflicting.executions, 0);
+});
+
+test('workspace resolver output is normalized before it reaches Guard', async () => {
+  const fallback = await runWithDecision({
+    provider: 'provider-one',
+    stdout: JSON.stringify({ decision: 'deny' }),
+    workspace: () => '   ',
+  });
+  assert.deepEqual(fallback.seenWorkspaces, [process.cwd()]);
+  assert.equal(fallback.seenPayloads[0].cwd, process.cwd());
+
+  const normalized = await runWithDecision({
+    provider: 'provider-two',
+    stdout: JSON.stringify({ decision: 'deny' }),
+    workspace: () => '  /tmp/tanstack-hol-guard  ',
+  });
+  assert.deepEqual(normalized.seenWorkspaces, ['/tmp/tanstack-hol-guard']);
+  assert.equal(normalized.seenPayloads[0].cwd, '/tmp/tanstack-hol-guard');
 });
