@@ -57,13 +57,13 @@ async def test_maps_guard_decision_to_strands_native_action(decision, expected_t
 
 @pytest.mark.asyncio
 async def test_provider_failure_is_fail_closed_without_argument_leakage():
-    secret = "token-super-secret"
-    handler = HolGuardIntervention(Provider(error=RuntimeError(f"provider failed near {secret}")))
+    marker = "sensitive-value-that-must-not-be-returned"
+    handler = HolGuardIntervention(Provider(error=RuntimeError(f"provider failed near {marker}")))
 
-    action = await handler.before_tool_call(event({"secret": secret}))
+    action = await handler.before_tool_call(event({"opaque_value": marker}))
 
     assert isinstance(action, Deny)
-    assert secret not in action.reason
+    assert marker not in action.reason
     assert handler.on_error == "deny"
 
 
