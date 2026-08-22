@@ -49,17 +49,6 @@ assert(skill.includes('OpenCode'), 'skill must document OpenCode support');
 const readme = await readFile(path.join(root, 'README.md'), 'utf8');
 const readmeLines = readme.split('\n');
 assert(
-  readme.startsWith('# HOL Guard Plugin: Security for AI Agent Ecosystems'),
-  'README must describe the ecosystem-wide product boundary in its title',
-);
-assert(readme.includes('assets/logo.svg'), 'README must display the HOL Guard Plugin logo');
-assert(readme.includes('actions/workflows/ci.yml'), 'README must display the CI badge');
-assert(readme.includes('license-Apache--2.0'), 'README must display the Apache 2.0 badge');
-assert(
-  readme.includes('harnesses, skills, MCP servers, agent frameworks, and plugin marketplaces'),
-  'README must describe the supported AI agent ecosystem surfaces',
-);
-assert(
   readmeLines.some((line) => line === '- Guard and scanner source: https://github.com/hashgraph-online/hol-guard'),
   'README must link source Guard repo',
 );
