@@ -125,6 +125,10 @@ def _bounded_runtime_context(context: object) -> dict[str, str]:
     return result
 
 
+def _guard_timeout_is_valid(timeout_seconds: float) -> bool:
+    return 0.0 < timeout_seconds <= MAX_GUARD_TIMEOUT_SECONDS
+
+
 def evaluate_with_hol_guard(
     tool_name: str,
     tool_args: dict[str, Any],
@@ -133,6 +137,11 @@ def evaluate_with_hol_guard(
     executable: str,
 ) -> GuardDecision:
     """Evaluate one ToolHive tools/call through HOL Guard's local hook envelope."""
+
+    if not _guard_timeout_is_valid(timeout_seconds):
+        raise HolGuardUnavailable(
+            f"HOL Guard timeout must be > 0 and <= {MAX_GUARD_TIMEOUT_SECONDS} seconds"
+        )
 
     payload = {
         "hook_event_name": "PreToolUse",
@@ -222,6 +231,8 @@ def evaluate_toolhive_webhook(
     arguments = params.get("arguments", {})
     if not isinstance(name, str) or not name.strip() or not isinstance(arguments, dict):
         return _deny(uid, "invalid_tool_call", "Invalid MCP tool call")
+    if not _guard_timeout_is_valid(timeout_seconds):
+        return _deny(uid, "hol_guard_timeout_invalid", "HOL Guard decision unavailable")
 
     runtime_context = _bounded_runtime_context(webhook_request.get("context"))
     try:
@@ -401,7 +412,7 @@ def serve(
     executable: str = "hol-guard",
     decision_provider: DecisionProvider = evaluate_with_hol_guard,
 ) -> None:
-    if not 0.0 < timeout_seconds <= MAX_GUARD_TIMEOUT_SECONDS:
+    if not _guard_timeout_is_valid(timeout_seconds):
         raise ValueError(f"timeout_seconds must be > 0 and <= {MAX_GUARD_TIMEOUT_SECONDS}")
     if not 0.0 < request_read_timeout_seconds <= MAX_REQUEST_READ_TIMEOUT_SECONDS:
         raise ValueError(
