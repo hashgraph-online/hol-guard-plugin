@@ -40,7 +40,10 @@ jobs:
           git clone --filter=blob:none https://github.com/bytedance/deer-flow.git "$DEERFLOW_SOURCE"
           git -C "$DEERFLOW_SOURCE" checkout --detach "$DEERFLOW_COMMIT"
           python -m pip install --upgrade pip
-          python -m pip install -e "$DEERFLOW_SOURCE/backend/packages/harness" -e "./integrations/deerflow-hol-guard[test]"
+          python -m pip install \
+            -e "$DEERFLOW_SOURCE/backend/packages/extension-api" \
+            -e "$DEERFLOW_SOURCE/backend/packages/harness" \
+            -e "./integrations/deerflow-hol-guard[test]"
 
       - name: Verify pinned DeerFlow provider contract
         env:
