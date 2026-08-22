@@ -31,6 +31,7 @@ class Provider:
 def event(arguments: Any = _DEFAULT, name: str = "destructive") -> BeforeToolCallEvent:
     tool_input = {"command": "rm -rf /tmp/example"} if arguments is _DEFAULT else arguments
     return BeforeToolCallEvent(
+        agent=None,
         selected_tool=None,
         tool_use={
             "name": name,
