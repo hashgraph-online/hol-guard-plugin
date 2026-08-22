@@ -1,0 +1,34 @@
+name: Spring AI HOL Guard integration
+
+on:
+  pull_request:
+    paths:
+      - "integrations/spring-ai-hol-guard/**"
+      - ".github/workflows/spring-ai-hol-guard.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "integrations/spring-ai-hol-guard/**"
+      - ".github/workflows/spring-ai-hol-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Java
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: integrations/spring-ai-hol-guard/pom.xml
+
+      - name: Verify released Spring AI execution contract
+        run: mvn -B -q -f integrations/spring-ai-hol-guard/pom.xml test
