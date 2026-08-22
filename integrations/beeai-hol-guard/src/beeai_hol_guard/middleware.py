@@ -38,17 +38,27 @@ def _normal(value: Any) -> str | None:
     return value.strip().lower() if isinstance(value, str) and value.strip() else None
 
 
+def _encode_payload(payload: dict[str, Any]) -> bytes | None:
+    try:
+        return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError):
+        return None
+
+
 def _parse_json_output(raw: bytes) -> dict[str, Any] | None:
     if len(raw) > _MAX_OUTPUT_BYTES:
         return None
-    text = raw.decode("utf-8", errors="strict").strip()
+    try:
+        text = raw.decode("utf-8", errors="strict").strip()
+    except UnicodeDecodeError:
+        return None
     if not text:
         return None
     candidates = [text, *reversed(text.splitlines())]
     for candidate in candidates:
         try:
             parsed = json.loads(candidate)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict):
             return parsed
@@ -87,11 +97,13 @@ def _classify(payload: dict[str, Any] | None) -> GuardDecision | None:
             for value in (_normal(layer.get("policy_action")), _normal(layer.get("policyAction")))
             if value
         }
-        reason = (
-            hook.get("permissionDecisionReason")
-            if isinstance(hook.get("permissionDecisionReason"), str)
-            else layer.get("reason") if isinstance(layer.get("reason"), str) else None
-        )
+        hook_reason = hook.get("permissionDecisionReason")
+        layer_reason = layer.get("reason")
+        reason: str | None = None
+        if isinstance(hook_reason, str):
+            reason = hook_reason
+        elif isinstance(layer_reason, str):
+            reason = layer_reason
 
         if (
             layer.get("blocked") is True
@@ -102,7 +114,7 @@ def _classify(payload: dict[str, Any] | None) -> GuardDecision | None:
             deny_reason = reason or "HOL Guard denied this BeeAI tool call."
         if decisions.intersection({"review", "ask"}) or actions.intersection({"review", "require-reapproval"}):
             review_reason = reason or review_reason or "HOL Guard requires approval for this BeeAI tool call."
-        if decisions.intersection({"allow", "warn"}) or actions.intersection({"allow", "warn"}):
+        if "allow" in decisions or "allow" in actions:
             allow = True
 
         for key in ("data", "payload", "result"):
@@ -117,6 +129,49 @@ def _classify(payload: dict[str, Any] | None) -> GuardDecision | None:
     if allow:
         return GuardDecision("allow")
     return None
+
+
+async def _terminate_process(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is None:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+    try:
+        await process.wait()
+    except ProcessLookupError:
+        pass
+
+
+async def _communicate_bounded(process: asyncio.subprocess.Process, encoded: bytes) -> bytes | None:
+    if process.stdin is None or process.stdout is None:
+        await _terminate_process(process)
+        return None
+
+    try:
+        process.stdin.write(encoded)
+        await process.stdin.drain()
+    except (BrokenPipeError, ConnectionResetError):
+        await _terminate_process(process)
+        return None
+    finally:
+        process.stdin.close()
+
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        read_limit = min(8192, _MAX_OUTPUT_BYTES + 1 - total)
+        chunk = await process.stdout.read(read_limit)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > _MAX_OUTPUT_BYTES:
+            await _terminate_process(process)
+            return None
+        chunks.append(chunk)
+
+    await process.wait()
+    return b"".join(chunks)
 
 
 class LocalHOLGuardProvider:
@@ -134,10 +189,13 @@ class LocalHOLGuardProvider:
         self.timeout_seconds = timeout_seconds
 
     async def __call__(self, payload: dict[str, Any]) -> GuardDecision:
-        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        encoded = _encode_payload(payload)
+        if encoded is None:
+            return GuardDecision("deny", "HOL Guard could not validate this BeeAI tool request.")
         if len(encoded) > _MAX_PAYLOAD_BYTES:
             return GuardDecision("deny", "HOL Guard rejected an oversized BeeAI tool request.")
 
+        process: asyncio.subprocess.Process | None = None
         try:
             process = await asyncio.create_subprocess_exec(
                 self.command,
@@ -152,14 +210,13 @@ class LocalHOLGuardProvider:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            stdout, _ = await asyncio.wait_for(process.communicate(encoded), timeout=self.timeout_seconds)
+            stdout = await asyncio.wait_for(_communicate_bounded(process, encoded), timeout=self.timeout_seconds)
         except (OSError, asyncio.TimeoutError):
-            if "process" in locals() and process.returncode is None:
-                process.kill()
-                await process.wait()
+            if process is not None:
+                await _terminate_process(process)
             return GuardDecision("deny", "HOL Guard is unavailable; BeeAI tool execution is blocked.")
 
-        decision = _classify(_parse_json_output(stdout))
+        decision = _classify(_parse_json_output(stdout)) if stdout is not None else None
         if process.returncode != 0 or decision is None:
             return GuardDecision("deny", "HOL Guard did not return an authoritative allow decision.")
         return decision
@@ -185,11 +242,15 @@ class BeeAIHolGuardMiddleware(RunMiddlewareProtocol):
             return
 
         raw_input = data.input.get("input")
-        if isinstance(raw_input, BaseModel):
-            arguments: dict[str, Any] = raw_input.model_dump(mode="json")
-        elif isinstance(raw_input, Mapping):
-            arguments = dict(raw_input)
-        else:
+        try:
+            if isinstance(raw_input, BaseModel):
+                arguments: dict[str, Any] = raw_input.model_dump(mode="json")
+            elif isinstance(raw_input, Mapping):
+                arguments = dict(raw_input)
+            else:
+                data.output = StringToolOutput(result="HOL Guard could not validate this BeeAI tool request.")
+                return
+        except (TypeError, ValueError):
             data.output = StringToolOutput(result="HOL Guard could not validate this BeeAI tool request.")
             return
 
@@ -201,7 +262,10 @@ class BeeAIHolGuardMiddleware(RunMiddlewareProtocol):
             "cwd": str(getattr(self._provider, "workspace", Path.cwd())),
             "runtime_context": {"framework": "beeai", "run_id": meta.trace.run_id if meta.trace else None},
         }
-        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        encoded = _encode_payload(payload)
+        if encoded is None:
+            data.output = StringToolOutput(result="HOL Guard could not validate this BeeAI tool request.")
+            return
         if len(encoded) > _MAX_PAYLOAD_BYTES:
             data.output = StringToolOutput(result="HOL Guard rejected an oversized BeeAI tool request.")
             return
@@ -211,6 +275,9 @@ class BeeAIHolGuardMiddleware(RunMiddlewareProtocol):
             decision = await value if inspect.isawaitable(value) else value
         except Exception:
             decision = GuardDecision("deny", "HOL Guard is unavailable; BeeAI tool execution is blocked.")
+
+        if not isinstance(decision, GuardDecision) or decision.kind not in {"allow", "deny", "review"}:
+            decision = GuardDecision("deny", "HOL Guard did not return an authoritative allow decision.")
 
         if decision.kind == "allow":
             return
