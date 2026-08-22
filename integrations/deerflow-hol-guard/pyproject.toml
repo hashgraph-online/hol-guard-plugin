@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling<1.32"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deerflow-hol-guard"
+version = "0.1.0"
+description = "Local HOL Guard GuardrailProvider for DeerFlow"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"
+dependencies = [
+  "hol-guard>=2.2.115",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=9.0.0"]
+
+[project.urls]
+Homepage = "https://hol.org/guard"
+Repository = "https://github.com/hashgraph-online/hol-guard-plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deerflow_hol_guard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
