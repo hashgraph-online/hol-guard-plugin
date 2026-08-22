@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version: '1.25.x'
-          cache-dependency-path: integrations/mcp-go-hol-guard/go.sum
+          cache-dependency-path: integrations/mcp-go-hol-guard/go.mod
       - name: Resolve pinned dependencies
         working-directory: integrations/mcp-go-hol-guard
         run: go mod tidy
