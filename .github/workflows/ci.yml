@@ -63,11 +63,17 @@ jobs:
           npm test
 
       - name: Test Qwen Code HOL Guard integration
-        working-directory: integrations/qwen-code-hol-guard
+        env:
+          QWEN_COMMIT: 6bbb273a86c6e9087aeb98aa6c5a65bcbbc0fa47
+          QWEN_SOURCE: ${{ runner.temp }}/qwen-code
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
-          node --input-type=module -e "const m = await import('@qwen-code/qwen-code-core'); if (typeof m.Config !== 'function') throw new Error('Qwen Code core Config export unavailable')"
-          npm test
+          git clone --filter=blob:none https://github.com/QwenLM/qwen-code.git "$QWEN_SOURCE"
+          git -C "$QWEN_SOURCE" checkout --detach "$QWEN_COMMIT"
+          grep -q "ToolInvocationGuard" "$QWEN_SOURCE/packages/core/src/config/config.ts"
+          grep -q "toolInvocationGuard" "$QWEN_SOURCE/packages/core/src/config/config.ts"
+          grep -q "zero tool invocations" "$QWEN_SOURCE/docs/design/2026-07-30-host-tool-invocation-guard.md"
+          npm --prefix integrations/qwen-code-hol-guard install --ignore-scripts --no-audit --no-fund
+          npm --prefix integrations/qwen-code-hol-guard test
 
       - name: Install and build pinned official DSH runtime
         env:
