@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import {
   classifyGuardDecision,
@@ -37,9 +39,25 @@ test('project-local hook layout derives the enclosing workspace', () => {
   assert.equal(workspace, '/tmp/demo');
 });
 
+test('filesystem-root project hook derives root workspace', () => {
+  const workspace = resolveWorkspace({ cwd: '/.moltis/hooks/hol-guard', env: {} });
+  assert.equal(workspace, '/');
+});
+
 test('explicit workspace overrides hook location', () => {
   const workspace = resolveWorkspace({ cwd: '/tmp/demo/.moltis/hooks/hol-guard', env: { HOL_GUARD_WORKSPACE: '/srv/work' } });
   assert.equal(workspace, '/srv/work');
+});
+
+test('executing handler as a script never silently allows when Guard is unavailable', () => {
+  const handler = fileURLToPath(new URL('./handler.mjs', import.meta.url));
+  const child = spawnSync(process.execPath, [handler], {
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    env: { ...process.env, PATH: '' },
+  });
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /HOL Guard is unavailable/);
 });
 
 test('allow executes downstream exactly once', async () => {
