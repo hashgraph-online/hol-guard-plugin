@@ -1,10 +1,12 @@
 import { spawn as spawnChild } from 'node:child_process';
+import { isAbsolute, join } from 'node:path';
 import process from 'node:process';
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MAX_TIMEOUT_MS = 30_000;
 const MAX_PAYLOAD_BYTES = 24 * 1024;
 const MAX_CAPTURE_BYTES = 64 * 1024;
+const TERMINATION_GRACE_MS = 250;
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -148,20 +150,74 @@ function buildPayload(input, output, directory, project) {
   return serialized;
 }
 
+function safeSerializationMessage(error) {
+  const message = error instanceof Error ? error.message : '';
+  if (message === 'OpenCode tool call is missing a tool name') return message;
+  if (message === 'tool input exceeds the maximum nesting depth') return message;
+  if (message === 'tool input contains a circular reference') return message;
+  if (message === 'HOL Guard payload exceeds the bounded OpenCode limit') return message;
+  return 'HOL Guard could not safely serialize this OpenCode tool call';
+}
+
+function trustedTaskkillPath() {
+  const systemRoot = nonEmptyString(process.env.SystemRoot) ?? nonEmptyString(process.env.WINDIR);
+  if (!systemRoot || !isAbsolute(systemRoot)) return null;
+  return join(systemRoot, 'System32', 'taskkill.exe');
+}
+
+async function terminateProcessTree(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const pid = child.pid;
+  if (process.platform === 'win32' && typeof pid === 'number') {
+    const taskkillPath = trustedTaskkillPath();
+    if (taskkillPath) {
+      await new Promise((resolve) => {
+        let killer;
+        try {
+          killer = spawnChild(taskkillPath, ['/PID', String(pid), '/T', '/F'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+        } catch {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(resolve, TERMINATION_GRACE_MS);
+        timer.unref();
+        killer.once('error', () => { clearTimeout(timer); resolve(); });
+        killer.once('close', () => { clearTimeout(timer); resolve(); });
+      });
+    }
+  } else if (typeof pid === 'number') {
+    try { process.kill(-pid, 'SIGTERM'); } catch {}
+    await new Promise((resolve) => setTimeout(resolve, TERMINATION_GRACE_MS));
+    try { process.kill(-pid, 'SIGKILL'); } catch {}
+  }
+  try { child.kill('SIGKILL'); } catch {}
+}
+
 export function runLocalHolGuard({ command = 'hol-guard', guardHome = null, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const timeout = boundedTimeout(timeoutMs);
   return ({ input, directory }) => new Promise((resolve, reject) => {
     const args = ['guard', 'hook', '--harness', 'opencode', '--workspace', directory];
     if (nonEmptyString(guardHome) !== null) args.push('--guard-home', guardHome.trim());
-    const child = spawnChild(command, args, {
-      cwd: directory,
-      shell: false,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    let child;
+    try {
+      child = spawnChild(command, args, {
+        cwd: directory,
+        detached: process.platform !== 'win32',
+        shell: false,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let forcedError = null;
     let timer;
     const finish = (error, result) => {
       if (settled) return;
@@ -170,11 +226,16 @@ export function runLocalHolGuard({ command = 'hol-guard', guardHome = null, time
       if (error) reject(error);
       else resolve(result);
     };
+    const fail = (error) => {
+      if (settled || forcedError) return;
+      forcedError = error;
+      void terminateProcessTree(child).finally(() => finish(forcedError));
+    };
     const append = (current, chunk, label) => {
+      if (forcedError || settled) return current;
       const next = current + chunk;
       if (Buffer.byteLength(next, 'utf8') > MAX_CAPTURE_BYTES) {
-        try { child.kill('SIGKILL'); } catch {}
-        finish(new Error('HOL Guard ' + label + ' exceeded the bounded capture limit'));
+        fail(new Error('HOL Guard ' + label + ' exceeded the bounded capture limit'));
         return current;
       }
       return next;
@@ -183,14 +244,11 @@ export function runLocalHolGuard({ command = 'hol-guard', guardHome = null, time
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => { stdout = append(stdout, chunk, 'stdout'); });
     child.stderr.on('data', (chunk) => { stderr = append(stderr, chunk, 'stderr'); });
-    child.once('error', (error) => finish(error));
-    child.once('close', (code) => finish(null, { exitCode: code ?? 1, stdout, stderr }));
-    timer = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch {}
-      finish(new Error('HOL Guard review timed out'));
-    }, timeout);
+    child.once('error', (error) => { if (!forcedError) finish(error); });
+    child.once('close', (code) => { if (!forcedError) finish(null, { exitCode: code ?? 1, stdout, stderr }); });
+    timer = setTimeout(() => fail(new Error('HOL Guard review timed out')), timeout);
     timer.unref();
-    child.stdin.on('error', (error) => finish(error));
+    child.stdin.on('error', (error) => { if (!forcedError) finish(error); });
     child.stdin.end(input);
   });
 }
@@ -206,8 +264,8 @@ export function createHolGuardPlugin(options = {}) {
         let guardInput;
         try {
           guardInput = buildPayload(input, output, workspace, project);
-        } catch {
-          throw new Error('HOL Guard could not safely serialize this OpenCode tool call.');
+        } catch (error) {
+          throw new Error(`${safeSerializationMessage(error)}. The tool call was blocked.`);
         }
 
         let result;
