@@ -1,8 +1,10 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
     "hol-guard": {
+      "type": "stdio",
       "command": "hol-guard",
-      "args": ["guard", "mcp", "serve", "--stdio"]
+      "args": ["mcp", "serve", "--stdio"]
     }
   }
 }
