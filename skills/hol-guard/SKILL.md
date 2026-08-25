@@ -214,20 +214,3 @@ When using Guard, report:
 - Exact next command if user must act.
 
 Do not claim protection, approval, or release readiness without command output proving it.
-
-## Local Helper
-
-This plugin includes:
-
-```bash
-bash scripts/hol-guard-plugin status
-bash scripts/hol-guard-plugin harnesses
-bash scripts/hol-guard-plugin protect claude-code
-bash scripts/hol-guard-plugin protect <harness>
-bash scripts/hol-guard-plugin scan-system claude <path>
-bash scripts/hol-guard-plugin scan-system codex <path>
-bash scripts/hol-guard-plugin scan <path>
-bash scripts/hol-guard-plugin evidence
-```
-
-Use the helper only when running from this plugin repository. Otherwise call `hol-guard` and `plugin-scanner` directly.
