@@ -48,7 +48,7 @@ assert(kimi.interface?.websiteURL === 'https://hol.org/guard', 'Kimi website mis
 
 const portableMcp = await load('mcp.json');
 assert(portableMcp.mcpServers?.['hol-guard']?.command === 'hol-guard', 'Portable MCP command mismatch');
-assert(JSON.stringify(portableMcp.mcpServers?.['hol-guard']?.args) === JSON.stringify(['guard', 'mcp', 'serve', '--stdio']), 'Portable MCP arguments mismatch');
+assert(JSON.stringify(portableMcp.mcpServers?.['hol-guard']?.args) === JSON.stringify(['mcp', 'serve', '--stdio']), 'Portable MCP arguments mismatch');
 
 const guardSkill = await readFile(path.join(root, 'skills/hol-guard/SKILL.md'), 'utf8');
 assert(guardSkill.includes('pipx install hol-guard'), 'Marketplace skill must preserve the documented pipx install path');
