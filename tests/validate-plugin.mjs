@@ -87,8 +87,8 @@ assert(mcpConfig.mcpServers['hol-guard'], '.mcp.json must have hol-guard server'
 const guardServer = mcpConfig.mcpServers['hol-guard'];
 assert(guardServer.command === 'hol-guard', '.mcp.json command must be hol-guard (direct binary)');
 assert(
-  Array.isArray(guardServer.args) && guardServer.args.length === 4 && guardServer.args[0] === 'guard' && guardServer.args[1] === 'mcp' && guardServer.args[2] === 'serve' && guardServer.args[3] === '--stdio',
-  '.mcp.json args must be ["guard", "mcp", "serve", "--stdio"]',
+  Array.isArray(guardServer.args) && guardServer.args.length === 3 && guardServer.args[0] === 'mcp' && guardServer.args[1] === 'serve' && guardServer.args[2] === '--stdio',
+  '.mcp.json args must be ["mcp", "serve", "--stdio"]',
 );
 const mcpJsonStr = JSON.stringify(mcpConfig);
 const forbiddenPatterns = JSON.parse(await readFile(path.join(root, 'tests/forbidden-patterns.json'), 'utf8'));
