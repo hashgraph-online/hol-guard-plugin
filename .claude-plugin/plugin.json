@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hol-guard",
   "version": "0.1.0",
   "description": "Install and operate HOL Guard local security for AI coding agents, MCP, skills, plugins, and package actions.",
