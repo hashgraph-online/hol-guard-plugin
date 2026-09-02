@@ -1,0 +1,32 @@
+{
+  "name": "@hashgraph-online/openclaw-hol-guard",
+  "version": "0.1.0",
+  "description": "HOL Guard pre-tool security plugin for OpenClaw.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist/",
+    "guard-client.js",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "openclaw": ">=2026.8.1"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.8.1",
+      "minGatewayVersion": "2026.8.1"
+    },
+    "build": {
+      "openclawVersion": "2026.8.1",
+      "pluginSdkVersion": "2026.8.1"
+    }
+  },
+  "engines": {
+    "node": ">=22.22.3"
+  }
+}
