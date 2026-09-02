@@ -1,0 +1,29 @@
+{
+  "id": "hol-guard",
+  "name": "HOL Guard",
+  "description": "Runs local HOL Guard policy before OpenClaw tool calls.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "executable": {
+        "type": "string",
+        "minLength": 1,
+        "default": "hol-guard"
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 250,
+        "maximum": 10000,
+        "default": 8000
+      },
+      "workspace": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
