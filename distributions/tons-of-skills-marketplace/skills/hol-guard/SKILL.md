@@ -1,11 +1,11 @@
 ---
 name: hol-guard
 description: Protects local AI coding-agent workflows with HOL Guard pre-execution controls, approvals, receipts, and verification. Use when enabling Guard for a supported local harness, reviewing a Guard block, or validating protection before trusted tool execution. Trigger with "hol guard", "protect this workspace", "review guard approvals", or "check guard status".
-allowed-tools: "Read,Glob,Grep,Bash(hol-guard:*),Bash(pipx:*),Bash(git:*)"
-version: 0.1.0
+allowed-tools: "Bash(hol-guard:*),Bash(pipx install hol-guard==3.0.46)"
+version: 0.1.1
 author: Hashgraph Online
 license: Apache-2.0
-compatibility: Designed for Claude Code; requires a local Python CLI environment with pipx for optional HOL Guard installation.
+compatibility: Supports local harness workflows including Claude Code, Codex, Copilot CLI, Cursor, Gemini CLI, Hermes, OpenClaw, OpenCode, and Antigravity; requires a local Python CLI environment with pipx for optional HOL Guard installation.
 tags: [security, ai-agents, approvals, local-first, supply-chain]
 ---
 
@@ -24,7 +24,7 @@ The normal path stays local. The skill does not require a Hashgraph Online accou
 - A supported harness such as Claude Code, Codex, Copilot CLI, Cursor, Gemini CLI, Hermes, OpenClaw, OpenCode, or Antigravity.
 - User approval before installing software or changing harness protection.
 
-Never read `.env` files, credential stores, private keys, or unrelated secrets. Never bypass a Guard approval. Preserve existing workspace changes and use `git status --short` before any repository edit that may be needed around the protected workflow.
+Never read `.env` files, credential stores, private keys, or unrelated secrets. Never bypass a Guard approval. Preserve existing workspace changes and do not edit harness or repository configuration manually to work around Guard.
 
 ## Instructions
 
@@ -83,7 +83,7 @@ Return a concise result containing:
 - any Guard block, review, approval, or receipt that materially affects the requested action;
 - the next Guard-owned action, if one is still required.
 
-Use precise language such as "HOL Guard reports protection active for Claude Code" rather than broad claims such as "the workspace is safe."
+Use precise language such as "HOL Guard reports protection active for the selected harness" rather than broad claims such as "the workspace is safe."
 
 ## Error Handling
 
@@ -95,7 +95,7 @@ If a repository already contains unrelated local changes, preserve them. Do not 
 
 ## Examples
 
-**Protect Claude Code in the current workspace**
+**Protect a supported harness in the current workspace**
 
 Input: `protect this workspace with hol guard`
 
@@ -105,13 +105,13 @@ Workflow:
 hol-guard status
 hol-guard detect --json
 hol-guard bootstrap
-hol-guard install claude-code
-hol-guard run claude-code --dry-run
-hol-guard run claude-code
+hol-guard install <harness>
+hol-guard run <harness> --dry-run
+hol-guard run <harness>
 hol-guard status
 ```
 
-Output: report the final Claude Code protection state and any Guard-owned changes or warnings shown by the commands.
+Output: report the final protection state for the selected harness and any Guard-owned changes or warnings shown by the commands.
 
 **Review a Guard block**
 
