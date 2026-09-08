@@ -22,10 +22,10 @@ HOL Guard itself is installed separately from the user's configured Python packa
 pipx install hol-guard==3.0.46
 ```
 
-The pre-install scanning skill uses the separately published `plugin-scanner` CLI:
+The pre-install scanning skill uses the separately published `plugin-scanner` CLI pinned to the exact package version reviewed for this payload:
 
 ```bash
-pipx install plugin-scanner
+pipx install plugin-scanner==3.0.123
 ```
 
 Installation is offered only after the user asks for the relevant workflow or explicitly approves installation. The skills keep enforcement and scanning in the published local CLIs rather than reimplementing security policy in marketplace content.
