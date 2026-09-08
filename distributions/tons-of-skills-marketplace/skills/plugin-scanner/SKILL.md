@@ -1,12 +1,7 @@
 ---
 name: plugin-scanner
 description: Scan AI agent skills, plugins, MCP servers, and agent tooling for prompt injection, unsafe commands, secret exposure, and supply-chain risks before installing or trusting them. Use when evaluating agent ecosystem content before installation, publication, or use. Trigger with "scan this skill", "check this MCP server", "audit this agent plugin", or "verify this AI tool".
-allowed-tools:
-  - "Bash(command -v plugin-scanner)"
-  - "Bash(pipx install plugin-scanner==3.0.123)"
-  - "Bash(plugin-scanner scan:*)"
-  - "Bash(plugin-scanner lint:*)"
-  - "Bash(plugin-scanner verify:*)"
+allowed-tools: "Bash(command -v plugin-scanner) Bash(pipx install plugin-scanner==3.0.123) Bash(plugin-scanner scan:*) Bash(plugin-scanner lint:*) Bash(plugin-scanner verify:*)"
 version: 0.1.0
 author: Hashgraph Online
 license: Apache-2.0

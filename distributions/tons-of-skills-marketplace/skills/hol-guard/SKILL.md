@@ -1,15 +1,7 @@
 ---
 name: hol-guard
 description: Protects local AI coding-agent workflows with HOL Guard pre-execution controls, approvals, receipts, and verification. Use when enabling Guard for a supported local harness, reviewing a Guard block, or validating protection before trusted tool execution. Trigger with "hol guard", "protect this workspace", "review guard approvals", or "check guard status".
-allowed-tools:
-  - "Bash(hol-guard status:*)"
-  - "Bash(hol-guard detect:*)"
-  - "Bash(hol-guard bootstrap:*)"
-  - "Bash(hol-guard install:*)"
-  - "Bash(hol-guard run:*)"
-  - "Bash(hol-guard approvals:*)"
-  - "Bash(hol-guard receipts:*)"
-  - "Bash(pipx install hol-guard==3.0.46)"
+allowed-tools: "Bash(hol-guard status:*) Bash(hol-guard detect:*) Bash(hol-guard bootstrap:*) Bash(hol-guard install:*) Bash(hol-guard run:*) Bash(hol-guard approvals:*) Bash(hol-guard receipts:*) Bash(pipx install hol-guard==3.0.46)"
 version: 0.1.2
 author: Hashgraph Online
 license: Apache-2.0
