@@ -4,6 +4,10 @@
   "private": true,
   "description": "HOL Guard security plugin for Codex, DeepSeek Harness, and agent ecosystems.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hashgraph-online/hol-guard-plugin.git"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -27,6 +31,12 @@
     "agent-security"
   ],
   "dsh": {
+    "compatibility": {
+      "dsh": "0.1.5-rc.2",
+      "dshReleases": {
+        "0.1.5-rc.2": "compatible"
+      }
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
