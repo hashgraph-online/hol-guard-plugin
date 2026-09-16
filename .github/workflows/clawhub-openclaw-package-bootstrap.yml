@@ -2,6 +2,11 @@ name: Publish OpenClaw Plugin to ClawHub
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/clawhub-openclaw-package-bootstrap.yml
 
 permissions:
   actions: read
@@ -23,3 +28,5 @@ jobs:
       wait_for_publication: true
       publication_timeout_minutes: 30
       topics: ai-security,developer-tools,open-source
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
