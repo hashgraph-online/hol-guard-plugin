@@ -1,3 +1,4 @@
+# One-shot bootstrap: this job only publishes when the triggering commit uses the exact bootstrap message.
 name: Bootstrap ClawHub OpenClaw Plugin Publish
 
 on:
