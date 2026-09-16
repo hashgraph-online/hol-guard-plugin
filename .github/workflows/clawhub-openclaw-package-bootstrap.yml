@@ -1,0 +1,30 @@
+name: Bootstrap ClawHub OpenClaw Plugin Publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/clawhub-openclaw-package-bootstrap.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.event.head_commit.message == 'chore: bootstrap ClawHub OpenClaw plugin publish'
+    permissions:
+      contents: read
+      id-token: write
+    uses: openclaw/clawhub/.github/workflows/package-publish.yml@cf95a285e744d5bc84f6e806df8859ba47979b7e
+    with:
+      source_path: distributions/openclaw-plugin
+      family: code-plugin
+      owner: hashgraph-online
+      dry_run: false
+      wait_for_publication: true
+      publication_timeout_minutes: 30
+      topics: ai-security,developer-tools,open-source
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
