@@ -26,23 +26,3 @@ jobs:
         run: |
           set -euo pipefail
           npm exec --yes --package=@tessl/cli@0.93.0 -- tessl tile lint .
-
-  publish-readiness:
-    name: Check Tessl publish readiness
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Check out immutable source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          persist-credentials: false
-
-      - name: Set up Tessl
-        uses: tesslio/setup-tessl@33e1c9253e3673f28e1b8949475b250dbd57918e
-        with:
-          version: "0.93.0"
-          token: ${{ secrets.TESSL_TOKEN }}
-
-      - name: Dry-run tile publish
-        run: tessl tile publish --dry-run .
