@@ -1,10 +1,11 @@
-# One-shot bootstrap: this job only publishes when the triggering commit uses the exact bootstrap message.
 name: Bootstrap ClawHub OpenClaw Plugin Publish
 
 on:
   push:
     branches:
       - main
+    paths:
+      - .github/workflows/clawhub-openclaw-package-bootstrap.yml
 
 permissions:
   contents: read
@@ -12,7 +13,6 @@ permissions:
 
 jobs:
   publish:
-    if: github.event.head_commit.message == 'chore: bootstrap ClawHub OpenClaw plugin publish'
     permissions:
       contents: read
       id-token: write
