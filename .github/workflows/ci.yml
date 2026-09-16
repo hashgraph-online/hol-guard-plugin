@@ -43,6 +43,7 @@ jobs:
           # user namespaces when required, and proves the exact bwrap profile.
           bash "$DSH_SOURCE/scripts/prepare-ci-bubblewrap.sh"
           pnpm --dir "$DSH_SOURCE" install --frozen-lockfile
+          pnpm --dir "$DSH_SOURCE" run build:native-system
           pnpm --dir "$DSH_SOURCE" run build:lib
 
       - name: Run real DSH headless integration
