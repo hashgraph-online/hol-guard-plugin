@@ -31,7 +31,7 @@ jobs:
 
       - name: Install and build pinned official DSH runtime
         env:
-          DSH_COMMIT: 47f943859bef60e4160492346772ded9b24f765a
+          DSH_COMMIT: fb2c4b9e698e30edb738bca4cf0618587db7d203
           DSH_SOURCE: ${{ runner.temp }}/deepseek-harness
         run: |
           npm install --global pnpm@11.17.0
