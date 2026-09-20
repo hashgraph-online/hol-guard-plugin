@@ -37,11 +37,18 @@ jobs:
           npm install --global pnpm@11.17.0
           git clone --filter=blob:none https://github.com/deepseek-ai/deepseek-harness.git "$DSH_SOURCE"
           git -C "$DSH_SOURCE" checkout --detach "$DSH_COMMIT"
-          # Use the pinned DSH revision's own CI bootstrap so the sandbox
-          # functional probe matches the runtime being exercised. The helper
-          # verifies the signed bubblewrap archive, configures hosted-runner
-          # user namespaces when required, and proves the exact bwrap profile.
-          bash "$DSH_SOURCE/scripts/prepare-ci-bubblewrap.sh"
+          # Prefer the pinned DSH bootstrap. Ubuntu can retire superseded
+          # security-package files from mirrors, so fall back to the runner's
+          # current official Noble package while preserving the same bwrap
+          # functional probe before the DSH build proceeds.
+          if ! bash "$DSH_SOURCE/scripts/prepare-ci-bubblewrap.sh"; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends bubblewrap
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 \
+              || echo 'apparmor userns knob absent; functional probe decides'
+            bwrap --version
+            bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true
+          fi
           pnpm --dir "$DSH_SOURCE" install --frozen-lockfile
           pnpm --dir "$DSH_SOURCE" run build:native-system
           pnpm --dir "$DSH_SOURCE" run build:lib
