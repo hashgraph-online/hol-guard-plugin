@@ -37,10 +37,10 @@ jobs:
           npm install --global pnpm@11.17.0
           git clone --filter=blob:none https://github.com/deepseek-ai/deepseek-harness.git "$DSH_SOURCE"
           git -C "$DSH_SOURCE" checkout --detach "$DSH_COMMIT"
-          # Use the pinned DSH revision's own CI bootstrap so the sandbox
-          # functional probe matches the runtime being exercised. The helper
-          # verifies the signed bubblewrap archive, configures hosted-runner
-          # user namespaces when required, and proves the exact bwrap profile.
+          # The pinned helper still points at archive.ubuntu.com, but this exact
+          # security-update package is served from security.ubuntu.com. Keep
+          # the helper's pinned version and SHA-256 while correcting the mirror.
+          sed -i 's#https://archive.ubuntu.com/ubuntu/#https://security.ubuntu.com/ubuntu/#' "$DSH_SOURCE/scripts/prepare-ci-bubblewrap.sh"
           bash "$DSH_SOURCE/scripts/prepare-ci-bubblewrap.sh"
           pnpm --dir "$DSH_SOURCE" install --frozen-lockfile
           pnpm --dir "$DSH_SOURCE" run build:native-system
