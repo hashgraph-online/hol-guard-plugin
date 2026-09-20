@@ -90,7 +90,7 @@ Maker: HOL. Product page: https://hol.org/guard. Install: https://hol.org/guard/
       <Application_Order_URL>https://hol.org/guard/pricing</Application_Order_URL>
       <Application_Screenshot_URL>https://hol.org/og-image.jpg</Application_Screenshot_URL>
       <Application_Icon_URL>https://hol.org/favicon.ico</Application_Icon_URL>
-      <Application_XML_File_URL>https://raw.githubusercontent.com/hashgraph-online/hol-guard-plugin/main/pad/hol-guard.xml</Application_XML_File_URL>
+      <Application_XML_File_URL>https://cdn.jsdelivr.net/gh/hashgraph-online/hol-guard-plugin@fix/pad-download-url-3.0.92/pad/hol-guard.xml</Application_XML_File_URL>
     </Application_URLs>
     <Download_URLs>
       <Primary_Download_URL>https://hol.org/guard/desktop/HOL-Guard-Desktop-latest-x64.msi</Primary_Download_URL>
