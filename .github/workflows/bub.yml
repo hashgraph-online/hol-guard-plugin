@@ -1,0 +1,40 @@
+name: Bub Plugin
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "src/bub_hol_guard/**"
+      - "tests/test_bub_plugin.py"
+      - ".github/workflows/bub.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "pyproject.toml"
+      - "src/bub_hol_guard/**"
+      - "tests/test_bub_plugin.py"
+      - ".github/workflows/bub.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Bub and plugin
+        run: |
+          python -m pip install --disable-pip-version-check pytest "bub @ git+https://github.com/bubbuild/bub.git@251850f83308e5f352c14a313e3d397333fe6712"
+          python -m pip install --disable-pip-version-check --no-deps .
+
+      - name: Test Bub gate
+        run: python -m pytest -q tests/test_bub_plugin.py
