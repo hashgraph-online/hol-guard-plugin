@@ -35,9 +35,9 @@
   </Company_Info>
   <Program_Info>
     <Program_Name>HOL Guard</Program_Name>
-    <Program_Version>3.0.75</Program_Version>
+    <Program_Version>3.0.92</Program_Version>
     <Program_Release_Month>09</Program_Release_Month>
-    <Program_Release_Day>12</Program_Release_Day>
+    <Program_Release_Day>20</Program_Release_Day>
     <Program_Release_Year>2026</Program_Release_Year>
     <Program_Cost_Dollars>0.00</Program_Cost_Dollars>
     <Program_Cost_Other></Program_Cost_Other>
@@ -46,15 +46,15 @@
     <Program_Install_Support>Install and Uninstall</Program_Install_Support>
     <Program_OS_Support>Win10,Win11,Win64</Program_OS_Support>
     <Program_Language>English</Program_Language>
-    <Program_Change_Info>Windows MSI desktop 3.0.75: current public HOL-Guard-Desktop-3.0.75-x64.msi via hol.org download API; PAD Application_XML_File_URL self-hosted; Free Apache-2.0 + optional Guard Cloud.</Program_Change_Info>
+    <Program_Change_Info>Windows MSI desktop 3.0.92: HOL-Guard-Desktop-3.0.92-x64.msi via version-pinned hol.org download API (SHA256 ed8d1bd9bc287d6420776e7883c39e4b232dbf9ac4f3eb6e281be982c1e822f4); PAD Application_XML_File_URL self-hosted; Free Apache-2.0 + optional Guard Cloud. Note: Softpedia-class validators may reject API URLs without .msi/.exe extension; no public anonymous GitHub releases/download/*.msi URL exists (desktop release assets are not anonymously fetchable).</Program_Change_Info>
     <Program_Specific_Category>Security</Program_Specific_Category>
     <Program_Category_Class>Security &amp; Privacy :: Other</Program_Category_Class>
     <Program_Categories>Security Tools,System Utilities,Developer Tools</Program_Categories>
     <Program_System_Requirements>Windows 10 or Windows 11 (64-bit)</Program_System_Requirements>
     <File_Info>
-      <File_Size_Bytes>37867520</File_Size_Bytes>
-      <File_Size_K>36980</File_Size_K>
-      <File_Size_MB>36.1</File_Size_MB>
+      <File_Size_Bytes>38031360</File_Size_Bytes>
+      <File_Size_K>37140</File_Size_K>
+      <File_Size_MB>36.3</File_Size_MB>
     </File_Info>
     <Expire_Info>
       <Has_Expire_Info>N</Has_Expire_Info>
@@ -81,7 +81,7 @@ Licensing and cost: the core product is freeware / open source under Apache-2.0.
 
 Honest limits: Scan is not a safety guarantee. Catalog scores and modeled benchmarks are not marketing guarantees. HOL Guard is not a cloud MCP gateway, WAF, EDR, MDM, antivirus product, or a complete prompt-injection preventer.
 
-Maker: HOL. Product page: https://hol.org/guard. Install: https://hol.org/guard/install. Windows desktop package: HOL-Guard-Desktop-3.0.75-x64.msi via the stable hol.org download API. Python package (separate line): PyPI hol-guard.</Char_Desc_2000>
+Maker: HOL. Product page: https://hol.org/guard. Install: https://hol.org/guard/install. Windows desktop package: HOL-Guard-Desktop-3.0.92-x64.msi via version-pinned hol.org download API (SHA256 ed8d1bd9bc287d6420776e7883c39e4b232dbf9ac4f3eb6e281be982c1e822f4). Python package (separate line): PyPI hol-guard.</Char_Desc_2000>
     </English>
   </Program_Descriptions>
   <Web_Info>
@@ -93,8 +93,8 @@ Maker: HOL. Product page: https://hol.org/guard. Install: https://hol.org/guard/
       <Application_XML_File_URL>https://raw.githubusercontent.com/hashgraph-online/hol-guard-plugin/main/pad/hol-guard.xml</Application_XML_File_URL>
     </Application_URLs>
     <Download_URLs>
-      <Primary_Download_URL>https://hol.org/api/guard/desktop/download?platform=windows</Primary_Download_URL>
-      <Secondary_Download_URL>https://github.com/hashgraph-online/hol-guard/releases/tag/v3.0.75</Secondary_Download_URL>
+      <Primary_Download_URL>https://hol.org/api/guard/desktop/download?platform=windows&amp;version=3.0.92</Primary_Download_URL>
+      <Secondary_Download_URL>https://hol.org/guard/install</Secondary_Download_URL>
       <Additional_Download_URL_1>https://pypi.org/project/hol-guard/</Additional_Download_URL_1>
       <Additional_Download_URL_2>https://hol.org/api/guard/desktop/download?platform=macos</Additional_Download_URL_2>
     </Download_URLs>
