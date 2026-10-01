@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XML_DIZ_INFO>
+  <MASTER_PAD_VERSION_INFO>
+    <MASTER_PAD_VERSION>4.0</MASTER_PAD_VERSION>
+    <MASTER_PAD_EDITOR>HOL Guard directory submit</MASTER_PAD_EDITOR>
+    <MASTER_PAD_EDITOR_VERSION>1.1</MASTER_PAD_EDITOR_VERSION>
+    <MASTER_PAD_INFO>Portable Application Description, or PAD for short, is a data set standard for software application descriptions.</MASTER_PAD_INFO>
+  </MASTER_PAD_VERSION_INFO>
+  <COMPANY_INFO>
+    <COMPANY_NAME>HOL</COMPANY_NAME>
+    <ADDRESS_1></ADDRESS_1>
+    <ADDRESS_2></ADDRESS_2>
+    <CITY_TOWN></CITY_TOWN>
+    <STATE_PROVINCE></STATE_PROVINCE>
+    <ZIP_POSTAL_CODE></ZIP_POSTAL_CODE>
+    <COUNTRY>USA</COUNTRY>
+    <COMPANY_WEBSITE_URL>https://hol.org</COMPANY_WEBSITE_URL>
+    <CONTACT_INFO>
+      <AUTHOR_FIRST_NAME>Michael</AUTHOR_FIRST_NAME>
+      <AUTHOR_LAST_NAME>Kantor</AUTHOR_LAST_NAME>
+      <AUTHOR_EMAIL>michael@hol.org</AUTHOR_EMAIL>
+      <CONTACT_FIRST_NAME>Michael</CONTACT_FIRST_NAME>
+      <CONTACT_LAST_NAME>Kantor</CONTACT_LAST_NAME>
+      <CONTACT_EMAIL>michael@hol.org</CONTACT_EMAIL>
+    </CONTACT_INFO>
+    <SUPPORT_INFO>
+      <SALES_EMAIL>michael@hol.org</SALES_EMAIL>
+      <SUPPORT_EMAIL>michael@hol.org</SUPPORT_EMAIL>
+      <GENERAL_EMAIL>michael@hol.org</GENERAL_EMAIL>
+      <SALES_PHONE></SALES_PHONE>
+      <SUPPORT_PHONE></SUPPORT_PHONE>
+      <GENERAL_PHONE></GENERAL_PHONE>
+      <FAX_PHONE></FAX_PHONE>
+    </SUPPORT_INFO>
+  </COMPANY_INFO>
+  <PROGRAM_INFO>
+    <PROGRAM_NAME>HOL Guard</PROGRAM_NAME>
+    <PROGRAM_VERSION>3.0.118</PROGRAM_VERSION>
+    <PROGRAM_RELEASE_MONTH>10</PROGRAM_RELEASE_MONTH>
+    <PROGRAM_RELEASE_DAY>01</PROGRAM_RELEASE_DAY>
+    <PROGRAM_RELEASE_YEAR>2026</PROGRAM_RELEASE_YEAR>
+    <PROGRAM_COST_DOLLARS>0.00</PROGRAM_COST_DOLLARS>
+    <PROGRAM_COST_OTHER></PROGRAM_COST_OTHER>
+    <PROGRAM_TYPE>Freeware</PROGRAM_TYPE>
+    <PROGRAM_RELEASE_STATUS>Major Update</PROGRAM_RELEASE_STATUS>
+    <PROGRAM_INSTALL_SUPPORT>Install and Uninstall</PROGRAM_INSTALL_SUPPORT>
+    <PROGRAM_OS_SUPPORT>Win10,Win11,Win64</PROGRAM_OS_SUPPORT>
+    <PROGRAM_LANGUAGE>English</PROGRAM_LANGUAGE>
+    <PROGRAM_CHANGE_INFO>Windows MSI desktop 3.0.118: Primary_Download_URL is https://hol.org/guard/desktop/HOL-Guard-Desktop-latest-x64.msi (path ends .msi for Softpedia-class validators); PAD Application_XML_File_URL self-hosted; Free Apache-2.0 + optional Guard Cloud.</PROGRAM_CHANGE_INFO>
+    <PROGRAM_SPECIFIC_CATEGORY>Security</PROGRAM_SPECIFIC_CATEGORY>
+    <PROGRAM_CATEGORY_CLASS>Security & Privacy :: Other</PROGRAM_CATEGORY_CLASS>
+    <PROGRAM_CATEGORIES>Security Tools,System Utilities,Developer Tools</PROGRAM_CATEGORIES>
+    <PROGRAM_SYSTEM_REQUIREMENTS>Windows 10 or Windows 11 (64-bit)</PROGRAM_SYSTEM_REQUIREMENTS>
+    <FILE_INFO>
+      <FILE_SIZE_BYTES>44695552</FILE_SIZE_BYTES>
+      <FILE_SIZE_K>43648</FILE_SIZE_K>
+      <FILE_SIZE_MB>42.6</FILE_SIZE_MB>
+    </FILE_INFO>
+    <EXPIRE_INFO>
+      <HAS_EXPIRE_INFO>N</HAS_EXPIRE_INFO>
+      <EXPIRE_COUNT></EXPIRE_COUNT>
+      <EXPIRE_BASED_ON></EXPIRE_BASED_ON>
+      <EXPIRE_OTHER_INFO></EXPIRE_OTHER_INFO>
+      <EXPIRE_MONTH></EXPIRE_MONTH>
+      <EXPIRE_DAY></EXPIRE_DAY>
+      <EXPIRE_YEAR></EXPIRE_YEAR>
+    </EXPIRE_INFO>
+  </PROGRAM_INFO>
+  <PROGRAM_DESCRIPTIONS>
+    <ENGLISH>
+      <KEYWORDS>HOL Guard, AI agent security, local-first, runtime firewall, MCP, coding agents, Apache-2.0, Guard Cloud</KEYWORDS>
+      <CHAR_DESC_45>Local-first AI coding-agent runtime firewall</CHAR_DESC_45>
+      <CHAR_DESC_80>Local-first runtime firewall for AI coding agents (Free + Cloud)</CHAR_DESC_80>
+      <CHAR_DESC_250>HOL Guard is a local-first coding-agent runtime firewall from HOL. It can gate shell, secrets/file reads, MCP changes, and plugin/skill installs with local approvals. Free Apache-2.0 core; optional Guard Cloud. Scan is not a safety guarantee.</CHAR_DESC_250>
+      <CHAR_DESC_450>HOL Guard is a local-first coding-agent runtime firewall by HOL (https://hol.org/guard). On Windows it can gate shell commands, secrets and file reads, MCP registration changes, and plugin or skill installs, with local approvals and receipts. Free Apache-2.0 core; optional Guard Cloud (hol.org/guard/pricing). Scan is not a safety guarantee. Not a WAF, EDR, or complete prompt-injection preventer.</CHAR_DESC_450>
+      <CHAR_DESC_2000>HOL Guard is a local-first coding-agent runtime firewall from HOL.
+
+On your Windows machine, HOL Guard can gate shell commands, secrets and file reads, MCP server registration changes, and plugin or skill installs. Risky actions go through local approvals and receipts so you stay in control of what supported coding agents do at runtime.
+
+Licensing and cost: the core product is freeware / open source under Apache-2.0. Optional Guard Cloud adds paid Solo/Pro/Team sync and team policy (see https://hol.org/guard/pricing). Local protection does not require a paid plan.
+
+Honest limits: Scan is not a safety guarantee. Catalog scores and modeled benchmarks are not marketing guarantees. HOL Guard is not a cloud MCP gateway, WAF, EDR, MDM, antivirus product, or a complete prompt-injection preventer.
+
+Maker: HOL. Product page: https://hol.org/guard. Install: https://hol.org/guard/install. Windows desktop package: HOL-Guard-Desktop-latest-x64.msi (stable hol.org MSI path). Python package (separate line): PyPI hol-guard.</CHAR_DESC_2000>
+    </ENGLISH>
+  </PROGRAM_DESCRIPTIONS>
+  <WEB_INFO>
+    <APPLICATION_URLS>
+      <APPLICATION_INFO_URL>https://hol.org/guard</APPLICATION_INFO_URL>
+      <APPLICATION_ORDER_URL>https://hol.org/guard/pricing</APPLICATION_ORDER_URL>
+      <APPLICATION_SCREENSHOT_URL>https://hol.org/og-image.jpg</APPLICATION_SCREENSHOT_URL>
+      <APPLICATION_ICON_URL>https://hol.org/favicon.ico</APPLICATION_ICON_URL>
+      <APPLICATION_XML_FILE_URL>https://raw.githubusercontent.com/hashgraph-online/hol-guard-plugin/main/pad/hol-guard-classic.xml</APPLICATION_XML_FILE_URL>
+    </APPLICATION_URLS>
+    <DOWNLOAD_URLS>
+      <PRIMARY_DOWNLOAD_URL>https://hol.org/guard/desktop/HOL-Guard-Desktop-latest-x64.msi</PRIMARY_DOWNLOAD_URL>
+      <SECONDARY_DOWNLOAD_URL>https://github.com/hashgraph-online/hol-guard/releases</SECONDARY_DOWNLOAD_URL>
+      <ADDITIONAL_DOWNLOAD_URL_1>https://pypi.org/project/hol-guard/</ADDITIONAL_DOWNLOAD_URL_1>
+      <ADDITIONAL_DOWNLOAD_URL_2>https://hol.org/api/guard/desktop/download?platform=macos</ADDITIONAL_DOWNLOAD_URL_2>
+    </DOWNLOAD_URLS>
+  </WEB_INFO>
+  <PERMISSIONS>
+    <DISTRIBUTION_PERMISSIONS>The freeware Apache-2.0 version of HOL Guard may be freely distributed over the internet in an unchanged form.</DISTRIBUTION_PERMISSIONS>
+    <EULA>Apache License 2.0. See https://www.apache.org/licenses/LICENSE-2.0</EULA>
+  </PERMISSIONS>
+</XML_DIZ_INFO>
