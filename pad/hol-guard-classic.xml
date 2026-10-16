@@ -48,7 +48,7 @@
     <PROGRAM_LANGUAGE>English</PROGRAM_LANGUAGE>
     <PROGRAM_CHANGE_INFO>Windows MSI desktop 3.0.118: Primary_Download_URL is https://hol.org/guard/desktop/HOL-Guard-Desktop-latest-x64.msi (path ends .msi for Softpedia-class validators); PAD Application_XML_File_URL self-hosted; Free Apache-2.0 + optional Guard Cloud.</PROGRAM_CHANGE_INFO>
     <PROGRAM_SPECIFIC_CATEGORY>Security</PROGRAM_SPECIFIC_CATEGORY>
-    <PROGRAM_CATEGORY_CLASS>Security & Privacy :: Other</PROGRAM_CATEGORY_CLASS>
+    <PROGRAM_CATEGORY_CLASS>Security &amp; Privacy :: Other</PROGRAM_CATEGORY_CLASS>
     <PROGRAM_CATEGORIES>Security Tools,System Utilities,Developer Tools</PROGRAM_CATEGORIES>
     <PROGRAM_SYSTEM_REQUIREMENTS>Windows 10 or Windows 11 (64-bit)</PROGRAM_SYSTEM_REQUIREMENTS>
     <FILE_INFO>
