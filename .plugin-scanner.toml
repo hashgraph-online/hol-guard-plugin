@@ -1,2 +1,6 @@
 [scanner]
 ignore_paths = ["tests/*", "chatgpt-app-submission.json"]
+
+# Copies of the skills kept for other marketplaces are not part of this plugin.
+[plugin_kit]
+exclude_paths = ["distributions/*"]
