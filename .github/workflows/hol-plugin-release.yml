@@ -2,6 +2,8 @@ name: HOL Plugin Release
 
 # Scans each published release with HOL Guard, checks it with the Plugin Kit,
 # attests the evidence on GitHub and records it on the plugin's HOL listing.
+# Releases cut by publish-agent-skills.yml are attested there, because a
+# release created with the workflow token does not trigger this workflow.
 on:
   release:
     types: [published]
