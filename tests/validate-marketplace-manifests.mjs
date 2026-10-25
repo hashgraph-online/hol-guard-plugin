@@ -46,6 +46,23 @@ assert(kimi.skills === './skills/', 'Kimi plugin must expose the existing skills
 assert(kimi.interface?.displayName === 'HOL Guard', 'Kimi display name mismatch');
 assert(kimi.interface?.websiteURL === 'https://hol.org/guard', 'Kimi website mismatch');
 
+const releaseVersions = {
+  'plugin.json': portable.version,
+  '.github/plugin/plugin.json': copilot.version,
+  '.github/plugin/marketplace.json metadata': marketplace.metadata?.version,
+  '.github/plugin/marketplace.json plugin': marketplace.plugins[0]?.version,
+  '.claude-plugin/plugin.json': claude.version,
+  '.claude-plugin/marketplace.json metadata': (await load('.claude-plugin/marketplace.json')).metadata?.version,
+  '.claude-plugin/marketplace.json plugin': (await load('.claude-plugin/marketplace.json')).plugins?.[0]?.version,
+  '.codex-plugin/plugin.json': (await load('.codex-plugin/plugin.json')).version,
+  '.cursor-plugin/plugin.json': (await load('.cursor-plugin/plugin.json')).version,
+  'kimi.plugin.json': kimi.version,
+};
+assert(
+  new Set(Object.values(releaseVersions)).size === 1,
+  `Plugin manifests must declare one release version: ${JSON.stringify(releaseVersions)}`,
+);
+
 const portableMcp = await load('mcp.json');
 assert(portableMcp.mcpServers?.['hol-guard']?.command === 'hol-guard', 'Portable MCP command mismatch');
 assert(JSON.stringify(portableMcp.mcpServers?.['hol-guard']?.args) === JSON.stringify(['mcp', 'serve', '--stdio']), 'Portable MCP arguments mismatch');
