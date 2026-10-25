@@ -72,6 +72,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+    outputs:
+      published: ${{ steps.github_publish.outputs.published }}
     steps:
       - name: Check out exact main commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -143,3 +145,22 @@ jobs:
           test "$(find . -type f -path '*/hol-guard/SKILL.md' | wc -l)" -ge 1
           test "$(find . -type f -path '*/plugin-scanner/SKILL.md' | wc -l)" -ge 1
           echo "skills.sh installed both HOL Guard skills successfully in CI."
+
+  # Releases created above use the workflow token, which does not start the
+  # release-triggered HOL Plugin Release workflow, so attest them here.
+  hol-plugin-release:
+    name: Attest the release with HOL Plugin Release
+    needs: publish
+    if: needs.publish.outputs.published == 'true'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+      security-events: write
+    uses: hashgraph-online/hol-guard/.github/workflows/plugin-release.yml@3f349b687e61c307499ad296f837f0873ea12682
+    with:
+      plugin_dir: "."
+      fail_on_severity: critical
+      upload_sarif: false
+      visibility: public
