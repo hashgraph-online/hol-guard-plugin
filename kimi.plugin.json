@@ -1,6 +1,6 @@
 {
   "name": "hol-guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Install and operate HOL Guard local security for AI coding agents, MCP, skills, plugins, and package actions.",
   "keywords": [
     "hol-guard",

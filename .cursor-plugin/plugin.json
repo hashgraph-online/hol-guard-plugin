@@ -1,7 +1,7 @@
 {
   "name": "hol-guard",
   "displayName": "HOL Guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first AI agent security with pre-action protection, MCP visibility, approvals, receipts, and plugin/skill scanning.",
   "author": {
     "name": "Hashgraph Online"
