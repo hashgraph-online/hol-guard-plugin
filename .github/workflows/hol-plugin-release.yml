@@ -19,7 +19,7 @@ jobs:
       attestations: write
       artifact-metadata: write
       security-events: write
-    uses: hashgraph-online/hol-guard/.github/workflows/plugin-release.yml@cf47a7bfefb1087c5c58ae78f210b43e255e857a
+    uses: hashgraph-online/hol-guard/.github/workflows/plugin-release.yml@b9337b304f29c16bcb0fc44ac3c8bb44ca914a68
     with:
       plugin_dir: "."
       fail_on_severity: critical
